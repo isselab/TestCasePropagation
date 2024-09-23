@@ -1,7 +1,12 @@
-<!-- Keep a Changelog guide -> https://keepachangelog.com -->
-
-# TestCasePropogation Changelog
+# Changelog
 
 ## [Unreleased]
+
+### Changed
+- Feature 1
+- Feature 2
+
+
 ### Added
-- Initial scaffold created from [IntelliJ Platform Plugin Template](https://github.com/JetBrains/intellij-platform-plugin-template)
+
+[Unreleased] 

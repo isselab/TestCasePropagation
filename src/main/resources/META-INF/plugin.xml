@@ -1,18 +1,47 @@
-<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
-<idea-plugin>
-    <id>com.github.johmara.testcasepropogation</id>
-    <name>TestCasePropogation</name>
-    <vendor>johmara</vendor>
+<!--
+Copyright [2024] [Luca Kramer]
 
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<idea-plugin>
+    <name>Test Case Propagation</name>
+    <id>se.isselab.TestCasePropagation</id>
+    <version>0.0.1</version>
+    <vendor email="LucaKramer@rub.de" url="https://github.com/LucaKramer/TestCasePropagation">Luca Kramer</vendor>
+
+    <!-- Product and plugin compatibility requirements.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
 
-    <resource-bundle>messages.MyBundle</resource-bundle>
+    <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
+         Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
+    <description>Plugin to propagate test cases from forks</description>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="com.github.johmara.testcasepropogation.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
+        <toolWindow  id="Propagation Settings" secondary="true" anchor="left"
+                     factoryClass="se.isselab.testcasepropagation.intelliJ.settings.SettingsViewFactory"/>
+    </extensions>
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService serviceInterface="se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings" serviceImplementation="se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings"/>
+        <projectConfigurable instance="se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettingsConfigurable" id="my.plugin.settings" displayName="Test Case Propagation Settings"/>
     </extensions>
 
-    <applicationListeners>
-        <listener class="com.github.johmara.testcasepropogation.listeners.MyApplicationActivationListener" topic="com.intellij.openapi.application.ApplicationActivationListener"/>
-    </applicationListeners>
+    <extensionPoints>
+
+    </extensionPoints>
+
+    <actions>
+
+    </actions>
 </idea-plugin>
