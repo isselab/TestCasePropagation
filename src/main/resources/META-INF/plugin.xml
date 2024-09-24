@@ -29,7 +29,7 @@ limitations under the License.
     <description>Plugin to propagate test cases from forks</description>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow  id="Propagation Settings" secondary="true" anchor="left"
+        <toolWindow  id="TestCasePropagation" secondary="true" anchor="left"
                      factoryClass="se.isselab.testcasepropagation.intelliJ.settings.SettingsViewFactory"/>
     </extensions>
     <extensions defaultExtensionNs="com.intellij">

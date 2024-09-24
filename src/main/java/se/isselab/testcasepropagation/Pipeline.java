@@ -65,11 +65,12 @@ public class Pipeline {
 
         // Step 1: Fetch all forks
         List<String[]> parentForks = null;
-        String parent = gh.fetchForkedOff(repository);
-        if(parent != null){
-            parentForks = gh.fetchForks(parent);
-        }
         List<String[]> forks = gh.fetchForks(repository);
+        String parent[] = gh.fetchForkedOff(repository);
+        if(parent != null){
+            parentForks = gh.fetchForks(parent[0]);
+            forks.add(parent);
+        }
         if(parentForks != null) {
             forks.addAll(parentForks);
         }

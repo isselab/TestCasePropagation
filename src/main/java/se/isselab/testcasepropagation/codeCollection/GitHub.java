@@ -184,7 +184,7 @@ public class GitHub {
         return "";
     }
 
-    public String fetchForkedOff(String repository) {
+    public String[] fetchForkedOff(String repository) {
         // Construct the API URL for fetching repository information
         String apiUrl = "https://api.github.com/repos/" + repository;
 
@@ -208,8 +208,9 @@ public class GitHub {
             // Check if the repository was forked from another repository
             if (jsonResponse.has("parent")) {
                 JSONObject parentRepo = jsonResponse.getJSONObject("parent");
-                System.out.println(parentRepo.getString("full_name"));
-                return parentRepo.getString("full_name"); // Returns the repository it was forked from
+                String fullName = parentRepo.getString("full_name");
+                String forkTime = jsonResponse.getString("pushed_at"); // Time the current repository (fork) was created
+                return new String[] { fullName, forkTime };
             }
 
         } catch (IOException | org.json.JSONException e) {
