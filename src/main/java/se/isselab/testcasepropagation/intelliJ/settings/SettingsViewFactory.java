@@ -168,49 +168,5 @@ public class SettingsViewFactory implements ToolWindowFactory {
             }
         });
     }
-
-    public void fetchTestFiles(String fork) {
-        TestCasePropagationSettings settings = TestCasePropagationSettings.getInstance();
-        String accessToken = settings.getGithubApiKey();
-
-        // Construct the search query
-        String searchQuery = "test+in:path+repo:" + fork;
-
-        // GitHub API endpoint for searching repository contents
-        String apiUrl = "https://api.github.com/search/code?q=" + searchQuery;
-
-        // Create HttpClient instance
-        HttpClient httpClient = HttpClients.createDefault();
-        HttpGet request = new HttpGet(apiUrl);
-        request.addHeader("Authorization", "Bearer " + accessToken);
-        request.addHeader("Accept", "application/vnd.github.v3+json");
-
-        try {
-            // Execute request
-            HttpResponse response = httpClient.execute(request);
-
-            // Get response entity
-            HttpEntity entity = response.getEntity();
-            String responseBody = EntityUtils.toString(entity);
-
-            System.out.println(responseBody);
-
-            // Parse JSON response
-            JSONObject jsonResponse = new JSONObject(responseBody);
-            JSONArray itemsArray = jsonResponse.getJSONArray("items");
-
-            System.out.println(itemsArray);
-//            for (int i = 0; i < itemsArray.length(); i++) {
-//                JSONObject item = itemsArray.getJSONObject(i);
-//                String fileName = item.getString("name");
-//                System.out.println("Test file found: " + fileName);
-//                // You can further process the test file information here
-//            }
-        } catch (IOException | org.json.JSONException e) {
-            e.printStackTrace();
-            // Handle exceptions appropriately
-        }
-    }
-
 }
 

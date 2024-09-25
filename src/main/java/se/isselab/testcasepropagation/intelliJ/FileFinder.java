@@ -30,13 +30,13 @@ public class FileFinder {
     public FileFinder() {
         project = ProjectManager.getInstance().getOpenProjects()[0]; // Assumes there is at least one open project
         if (project == null) {
-            System.out.println("No open project found.");
+
         }
 
         // Get the base directory of the project
         baseDir = project.getBaseDir();
         if (baseDir == null) {
-            System.out.println("Project base directory not found.");
+
         }
     }
 
@@ -105,7 +105,7 @@ public class FileFinder {
             try {
                 return new String(file.contentsToByteArray(), StandardCharsets.UTF_8);
             } catch (IOException e) {
-                System.out.println("Error reading file content: " + e.getMessage());
+
             }
         }
         return null; // File not found or invalid
@@ -117,7 +117,7 @@ public class FileFinder {
             try {
                 return new String(file.contentsToByteArray(), StandardCharsets.UTF_8);
             } catch (IOException e) {
-                System.out.println("Error reading file content: " + e.getMessage());
+
             }
         }
         return null; // File not found or invalid

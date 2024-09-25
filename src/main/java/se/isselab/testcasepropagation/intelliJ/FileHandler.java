@@ -30,7 +30,6 @@ public class FileHandler {
     public File getFile() {
         Project[] openProjects = ProjectManager.getInstance().getOpenProjects();
         if (openProjects.length == 0) {
-            System.out.println("No open projects found.");
             return null;
         }
 

@@ -38,7 +38,6 @@ public class FileCreator {
         // Get the PsiDirectory from the VirtualFile
         PsiDirectory rootDirectory = PsiManager.getInstance(project).findDirectory(projectBaseDir);
         if (rootDirectory == null) {
-            System.out.println("Could not find the root directory.");
             return;
         }
 
@@ -52,7 +51,6 @@ public class FileCreator {
         // Ensure the file doesn't already exist in the root directory
         PsiFile existingFile = rootDirectory.findFile(fileName);
         if (existingFile != null) {
-            System.out.println("File " + fileName + " already exists in the project root.");
             return;
         }
 
@@ -66,7 +64,6 @@ public class FileCreator {
 
             // Add the file to the root directory
             rootDirectory.add(testFile);
-            System.out.println("Test file " + fileName + " created successfully in the project root.");
         });
     }
 }
