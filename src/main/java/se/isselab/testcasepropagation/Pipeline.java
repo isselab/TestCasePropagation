@@ -40,6 +40,7 @@ public class Pipeline {
     private Project project;
     private ArrayList<PropagationElement> propagationQueue;
     private int possibleTests;
+    private CodeDifferenceViewer codeDifferenceViewer;
 
 
     public Pipeline(){
@@ -47,6 +48,7 @@ public class Pipeline {
         gh = new GitHub(settings.getGithubApiKey());
         project = ProjectManager.getInstance().getOpenProjects()[0];
         propagationQueue = new ArrayList<PropagationElement>();
+        codeDifferenceViewer = new CodeDifferenceViewer(this);
     }
 
     public void fetchPipeline(String repository_input){
@@ -153,7 +155,6 @@ public class Pipeline {
             }
             return;
         }
-        CodeDifferenceViewer codeDifferenceViewer = new CodeDifferenceViewer(this);
         PropagationElement propagationElement = propagationQueue.get(0);
         VirtualFile virtualFile = propagationElement.getProjectFile();
         String testFunction = propagationElement.getTestCase();
