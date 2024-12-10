@@ -18,6 +18,8 @@ package se.isselab.testcasepropagation;
 
 import com.intellij.openapi.vfs.VirtualFile;
 import se.isselab.testcasepropagation.codeCollection.GitHub;
+import se.isselab.testcasepropagation.codeCollection.GitLab;
+
 
 import java.io.*;
 import java.util.*;
@@ -36,6 +38,7 @@ import se.isselab.testcasepropagation.intelliJ.visualize.CodeDifferenceViewer;
 
 public class Pipeline {
     private final GitHub gh;
+    private final GitLab gl;
 
     private Project project;
     private ArrayList<PropagationElement> propagationQueue;
@@ -46,79 +49,102 @@ public class Pipeline {
     public Pipeline(){
         TestCasePropagationSettings settings = TestCasePropagationSettings.getInstance();
         gh = new GitHub(settings.getGithubApiKey());
+        gl = new GitLab("");
         project = ProjectManager.getInstance().getOpenProjects()[0];
         propagationQueue = new ArrayList<PropagationElement>();
         codeDifferenceViewer = new CodeDifferenceViewer(this);
     }
 
-    public void fetchPipeline(String repository_input){
-        String repository = repository_input;
+    public void fetchPipeline(String repositoryInput, boolean isGitLab) {
+        String repository = repositoryInput;
         SettingsViewFactory settingsViewFactory = SettingsViewFactory.getInstance();
-
+    
         if (settingsViewFactory != null) {
             settingsViewFactory.enableFetchButton(false);
         }
-
+    
         FileFinder fileFinder = new FileFinder();
         int testFileCounter = 0;
         int testFunctionCounter = 0;
         possibleTests = 0;
-
-
+    
         // Step 1: Fetch all forks
-        List<String[]> parentForks = null;
-        List<String[]> forks = gh.fetchForks(repository);
-        String parent[] = gh.fetchForkedOff(repository);
-        if(parent != null){
-            parentForks = gh.fetchForks(parent[0]);
-            forks.add(parent);
+        List<String[]> forks = new ArrayList<>();
+        if (isGitLab) {
+            // For GitLab
+            forks = gl.fetchForks(repository);
+            String parentProjectId = gl.fetchForkedFrom(repository);
+            if (parentProjectId != null) {
+                List<String[]> parentForks = gl.fetchForks(parentProjectId);
+                forks.addAll(parentForks);
+                forks.add(new String[]{parentProjectId});
+            }
+        } else {
+            // For GitHub
+            forks = gh.fetchForks(repository);
+            String[] parent = gh.fetchForkedOff(repository);
+            if (parent != null) {
+                List<String[]> parentForks = gh.fetchForks(parent[0]);
+                forks.addAll(parentForks);
+                forks.add(parent);
+            }
         }
-        if(parentForks != null) {
-            forks.addAll(parentForks);
-        }
+    
         if (settingsViewFactory != null) {
             settingsViewFactory.updateForkLabel(forks.size());
         }
-
-        for(String[] fork : forks){
+    
+        // Process each fork
+        for (String[] fork : forks) {
             // Step 2: Get all file paths in the fork
-            List<String> filePaths = gh.fetchAllFilePaths(fork[0]);
-
+            List<String> filePaths;
+            if (isGitLab) {
+                filePaths = gl.fetchAllFilePaths(fork[0]);
+            } else {
+                filePaths = gh.fetchAllFilePaths(fork[0]);
+            }
+    
             for (String filePath : filePaths) {
+                // Step 3: Identify test files
                 if (filePath.endsWith(".java") && filePath.toLowerCase().contains("test")) {
-                    // Step 3: Fetch content of test files
                     testFileCounter++;
-                    String testFileContent = gh.fetchFileContent(fork[0], filePath);
-
-                    // Step 4: Extract tested code
+    
+                    // Step 4: Fetch content of test files
+                    String testFileContent;
+                    if (isGitLab) {
+                        testFileContent = gl.fetchFileContent(fork[0], filePath);
+                    } else {
+                        testFileContent = gh.fetchFileContent(fork[0], filePath);
+                    }
+    
+                    // Step 5: Extract used classes from test content
                     ClassFileFinder classFileFinder = new ClassFileFinder();
                     Set<String> usedClasses = classFileFinder.extractUsedClassesFromString(testFileContent);
-
+    
                     for (String usedClass : usedClasses) {
-                        // Find the file path of the class being tested
+                        // Step 6: Check if the tested class exists in the local project
                         if (!doesClassExist(fileFinder, usedClass)) {
-                            System.out.println("Tested class " + usedClass + " does not exist in the project.");
-                            continue;  // Skip this class if it doesn't exist
+                            // Skip if class doesn't exist in the local project
+                            continue;
                         }
-
+    
                         String testedFilePath = findTestedFilePath(filePaths, usedClass);
-
+    
                         if (testedFilePath != null) {
-                            // Fetch content of the tested file
-                            //String testedFileContent = gh.fetchFileContent(fork[0], testedFilePath);
-
-                            // Extract tested functions
+                            // Step 7: Extract test functions
                             TestedFunctionExtractor testedFunctionExtractor = new TestedFunctionExtractor();
                             Map<String, String> testFunctions = testedFunctionExtractor.extractFunctions(testFileContent);
-
+    
                             for (Map.Entry<String, String> entry : testFunctions.entrySet()) {
-                                String testCase = entry.getKey();
+                                String testCaseName = entry.getKey();
                                 String testFunction = entry.getValue();
                                 testFunctionCounter++;
-                                // Step 5: Check if the test case exists in the current project using FileFinder
+    
+                                // Step 8: Check if the test case already exists in the local project
                                 if (!doesTestCaseExist(fileFinder, usedClass, testFunction)) {
                                     String testedFunctionName = testedFunctionExtractor.extractTestedFunctionName(testFunction);
-                                    // Step 6: Check if tested function exists in the project using FileFinder
+    
+                                    // Step 9: Check if the tested function exists in the local project
                                     if (doesFunctionExist(fileFinder, testedFilePath, testedFunctionName)) {
                                         possibleTests++;
                                         addPropagationElement(fileFinder, usedClass, testFunction, usedClass);
@@ -130,19 +156,13 @@ public class Pipeline {
                 }
             }
         }
+    
+        // Update UI labels and enable buttons
         if (settingsViewFactory != null) {
             settingsViewFactory.updateTestFilesLabel(testFileCounter);
-        }
-        if (settingsViewFactory != null) {
             settingsViewFactory.updateTestsLabel(testFunctionCounter);
-        }
-        if (settingsViewFactory != null) {
             settingsViewFactory.updateTestPropagationLabel(possibleTests);
-        }
-        if (settingsViewFactory != null) {
             settingsViewFactory.enablePropagationButton(true);
-        }
-        if (settingsViewFactory != null) {
             settingsViewFactory.enableFetchButton(true);
         }
     }

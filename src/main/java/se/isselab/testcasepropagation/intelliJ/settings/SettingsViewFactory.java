@@ -50,6 +50,7 @@ public class SettingsViewFactory implements ToolWindowFactory {
     private JButton startFetch;
     private JButton startPropagate;
     private Pipeline pipeline;
+    private JComboBox<String> platformSelector;
 
 
     public SettingsViewFactory() {
@@ -76,6 +77,14 @@ public class SettingsViewFactory implements ToolWindowFactory {
         repositoryUrlField.setMaximumSize(new Dimension(300, 30)); // Set the size of the text field
         repositoryUrlField.setAlignmentX(Component.CENTER_ALIGNMENT);
         panel.add(repositoryUrlField);
+
+        // Initialize the platform selector
+        platformSelector = new JComboBox<>(new String[]{"GitHub", "GitLab"});
+        platformSelector.setMaximumSize(new Dimension(200, platformSelector.getPreferredSize().height));
+        JLabel platformLabel = new JLabel("Select Platform");
+        platformLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        panel.add(platformLabel);
+        panel.add(platformSelector);
 
         startFetch = new JButton("Start fetching");
         startFetch.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -158,15 +167,17 @@ public class SettingsViewFactory implements ToolWindowFactory {
     }
 
     private void fetchButtonAction(String repository) {
-        ProgressManager.getInstance().run(new Task.Backgroundable(currentProject, "Running Test Button Action") {
+        ProgressManager.getInstance().run(new Task.Backgroundable(currentProject, "Running Fetch Button Action") {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
-                pipeline.fetchPipeline(repository);
+                boolean isGitLab = platformSelector.getSelectedItem().equals("GitLab");
+                pipeline.fetchPipeline(repository, isGitLab);
                 SwingUtilities.invokeLater(() -> {
-
+                    // Update UI or perform any necessary actions on the Swing thread
                 });
             }
         });
     }
+
 }
 
