@@ -92,6 +92,8 @@ public class SettingsViewFactory implements ToolWindowFactory {
             @Override
             public void actionPerformed(ActionEvent e) {
                 String repositoryUrl = repositoryUrlField.getText();
+                fetchButtonAction(repositoryUrl);
+                /*
                 if (repositoryUrl != null && repositoryUrl.contains("/") && repositoryUrl.indexOf("/") == repositoryUrl.lastIndexOf("/")) {
                     // If the format is correct, call the fetch action
                     fetchButtonAction(repositoryUrl);
@@ -99,6 +101,7 @@ public class SettingsViewFactory implements ToolWindowFactory {
                     // Show dialog if the format is incorrect
                     JOptionPane.showMessageDialog(panel, "Repository in wrong format", "Invalid Repository", JOptionPane.ERROR_MESSAGE);
                 }
+                */
             }
         });
         panel.add(startFetch);

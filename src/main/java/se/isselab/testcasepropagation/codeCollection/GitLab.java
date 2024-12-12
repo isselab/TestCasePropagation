@@ -23,39 +23,46 @@ public class GitLab {
         List<String[]> forksList = new ArrayList<>();
         String apiUrl = "https://gitlab.com/api/v4/projects/" + projectId + "/forks";
         HttpClient httpClient = HttpClients.createDefault();
-
-        try {
-            int page = 1;
-            while (true) {
+    
+        int page = 1;
+        while (true) {
+            try {
                 HttpGet request = new HttpGet(apiUrl + "?page=" + page + "&per_page=100");
                 request.addHeader("PRIVATE-TOKEN", accessToken);
-
+    
                 HttpResponse response = httpClient.execute(request);
-                if (response.getStatusLine().getStatusCode() != 200) {
+                int statusCode = response.getStatusLine().getStatusCode();
+                if (statusCode != 200) {
+                    System.err.println("Failed to fetch forks. HTTP Error Code: " + statusCode);
                     break;
                 }
-
+    
                 HttpEntity entity = response.getEntity();
+                if (entity == null) {
+                    System.err.println("No response received.");
+                    break;
+                }
+    
                 String responseBody = EntityUtils.toString(entity);
                 JSONArray forksArray = new JSONArray(responseBody);
-
                 if (forksArray.length() == 0) {
                     break;
                 }
-
+    
                 for (int i = 0; i < forksArray.length(); i++) {
                     JSONObject fork = forksArray.getJSONObject(i);
-                    String forkId = fork.getString("id");
-                    String lastActivityAt = fork.getString("last_activity_at");
-                    forksList.add(new String[]{forkId, lastActivityAt});
+                    String[] forkInfo = new String[2];
+                    forkInfo[0] = String.valueOf(fork.getLong("id"));
+                    forkInfo[1] = fork.getString("path_with_namespace");
+                    forksList.add(forkInfo);
                 }
-
+    
                 page++;
+            } catch (Exception e) {
+                System.err.println("An unexpected error occurred: " + e.getMessage());
+                break;
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
-
         return forksList;
     }
 
