@@ -31,7 +31,6 @@ import se.isselab.testcasepropagation.codeDuplication.CodeDuplicationDetector;
 import se.isselab.testcasepropagation.codeDuplication.TestedFunctionExtractor;
 import se.isselab.testcasepropagation.helper.PropagationElement;
 import se.isselab.testcasepropagation.intelliJ.FileFinder;
-import se.isselab.testcasepropagation.intelliJ.FileHandler;
 import se.isselab.testcasepropagation.intelliJ.settings.SettingsViewFactory;
 import se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings;
 import se.isselab.testcasepropagation.intelliJ.visualize.CodeDifferenceViewer;

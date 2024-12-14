@@ -38,6 +38,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ItemListener;
+import java.awt.event.ItemEvent;
 import java.io.IOException;
 
 public class SettingsViewFactory implements ToolWindowFactory {
@@ -45,6 +47,7 @@ public class SettingsViewFactory implements ToolWindowFactory {
     private JLabel testFiles;
     private JLabel testFunctions;
     private JLabel testPropagation;
+    private JLabel inputLabel;
     private static SettingsViewFactory instance;
     private Project currentProject;
     private JButton startFetch;
@@ -68,7 +71,7 @@ public class SettingsViewFactory implements ToolWindowFactory {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
-        JLabel inputLabel = new JLabel("Enter Repository in format 'User/Project':");
+        inputLabel = new JLabel("Enter Repository in format 'User/Project':");
         inputLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         panel.add(inputLabel);
 
@@ -86,6 +89,21 @@ public class SettingsViewFactory implements ToolWindowFactory {
         panel.add(platformLabel);
         panel.add(platformSelector);
 
+        // ItemListener to update inputLabel based on selection
+        platformSelector.addItemListener(new ItemListener() {
+            @Override
+            public void itemStateChanged(ItemEvent e) {
+                if (e.getStateChange() == ItemEvent.SELECTED) {
+                    String selectedPlatform = e.getItem().toString();
+                    if (selectedPlatform.equals("GitHub")) {
+                        inputLabel.setText("Enter Repository in format 'User/Project':");
+                    } else if (selectedPlatform.equals("GitLab")) {
+                        inputLabel.setText("Enter Repository in format 'ProjectID':");
+                    }
+                }
+            }
+        });
+
         startFetch = new JButton("Start fetching");
         startFetch.setAlignmentX(Component.CENTER_ALIGNMENT);
         startFetch.addActionListener(new ActionListener() {
@@ -93,17 +111,18 @@ public class SettingsViewFactory implements ToolWindowFactory {
             public void actionPerformed(ActionEvent e) {
                 String repositoryUrl = repositoryUrlField.getText();
                 fetchButtonAction(repositoryUrl);
-                /*
-                if (repositoryUrl != null && repositoryUrl.contains("/") && repositoryUrl.indexOf("/") == repositoryUrl.lastIndexOf("/")) {
+                
+                if (repositoryUrl != null && repositoryUrl.contains("/") && repositoryUrl.indexOf("/") == repositoryUrl.lastIndexOf("/") || platformSelector.getSelectedItem().equals("GitLab")) {
                     // If the format is correct, call the fetch action
                     fetchButtonAction(repositoryUrl);
                 } else {
                     // Show dialog if the format is incorrect
                     JOptionPane.showMessageDialog(panel, "Repository in wrong format", "Invalid Repository", JOptionPane.ERROR_MESSAGE);
                 }
-                */
+                
             }
         });
+
         panel.add(startFetch);
 
         forkLabel = new JLabel("Found forks: 0");
