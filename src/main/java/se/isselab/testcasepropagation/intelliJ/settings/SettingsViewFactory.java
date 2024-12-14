@@ -110,16 +110,23 @@ public class SettingsViewFactory implements ToolWindowFactory {
             @Override
             public void actionPerformed(ActionEvent e) {
                 String repositoryUrl = repositoryUrlField.getText();
-                fetchButtonAction(repositoryUrl);
-                
-                if (repositoryUrl != null && repositoryUrl.contains("/") && repositoryUrl.indexOf("/") == repositoryUrl.lastIndexOf("/") || platformSelector.getSelectedItem().equals("GitLab")) {
-                    // If the format is correct, call the fetch action
-                    fetchButtonAction(repositoryUrl);
-                } else {
-                    // Show dialog if the format is incorrect
-                    JOptionPane.showMessageDialog(panel, "Repository in wrong format", "Invalid Repository", JOptionPane.ERROR_MESSAGE);
+                String selectedPlatform = platformSelector.getSelectedItem().toString();
+        
+                if (selectedPlatform.equals("GitHub")) {
+                    // Validate GitHub repository format: 'User/Project'
+                    if (repositoryUrl != null && repositoryUrl.matches("^[\\w.-]+/[\\w.-]+$")) {
+                        fetchButtonAction(repositoryUrl);
+                    } else {
+                        JOptionPane.showMessageDialog(panel, "Repository in wrong format.\nExpected format: 'User/Project'", "Invalid Repository", JOptionPane.ERROR_MESSAGE);
+                    }
+                } else if (selectedPlatform.equals("GitLab")) {
+                    // Validate GitLab Project ID format: numeric sequence
+                    if (repositoryUrl != null && repositoryUrl.matches("^\\d+$")) {
+                        fetchButtonAction(repositoryUrl);
+                    } else {
+                        JOptionPane.showMessageDialog(panel, "Project ID should be a numeric sequence.", "Invalid Project ID", JOptionPane.ERROR_MESSAGE);
+                    }
                 }
-                
             }
         });
 
