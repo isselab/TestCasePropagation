@@ -56,9 +56,9 @@ public class Pipeline {
 
         FileFinder fileFinder = new FileFinder();
 
-        int testFileCounter = 0;
-        int testFunctionCounter = 0;
-        int possibleTests = 0;
+        int forkTestFilesCount = 0;
+        int forkTestMethodsCount = 0;
+        int possibleTestCount = 0;
 
 
         // Step 1: Fetch all forks
@@ -67,48 +67,48 @@ public class Pipeline {
 
         for(String[] fork : forks){
             // Step 2: Get all file paths in the fork
-            List<String> filePaths = github.fetchAllFilePaths(fork[0]);
-            List<String> testFilePaths = filePaths.stream()
+            List<String> forkFilePaths = github.fetchAllFilePaths(fork[0]);
+            List<String> forkTestFilePaths = forkFilePaths.stream()
                     .filter(p -> p.endsWith(".java") && p.toLowerCase().contains("test"))
                     .collect(Collectors.toList());
 
-            for (String testFilePath : testFilePaths){
-                testFileCounter++;
-                if (settingsViewFactory != null) settingsViewFactory.updateTestFilesLabel(testFileCounter);
+            for (String forkTestFilePath : forkTestFilePaths){
+                forkTestFilesCount++;
+                if (settingsViewFactory != null) settingsViewFactory.updateTestFilesLabel(forkTestFilesCount);
 
                 // Step 3: Fetch content of test files
-                String testFileContent = github.fetchFileContent(fork[0], testFilePath);
+                String forkTestFileContent = github.fetchFileContent(fork[0], forkTestFilePath);
                 // Step 4: Extract tested code
-                Set<String> usedClasses = new ClassFileFinder().extractUsedClassesFromString(testFileContent);
+                Set<String> usedClassesInForkTestFile = new ClassFileFinder().extractUsedClassesFromString(forkTestFileContent);
 
-                for (String usedClass : usedClasses){
+                for (String usedClassInForkTestFile : usedClassesInForkTestFile){
                     // Find the file path of the class being tested
-                    if (!classExists(fileFinder, usedClass)) continue; // Skip this class if it doesn't exist
-                    String testedFilePath = findTestedFilePath(filePaths, usedClass);
-                    if (testedFilePath == null) continue;
+                    if (!classExistsLocally(fileFinder, usedClassInForkTestFile)) continue; // Skip this class if it doesn't exist locally
+                    String forkUUTPath = findForkUUTPath(forkFilePaths, usedClassInForkTestFile);
+                    if (forkUUTPath == null) continue;
 
                     // Fetch content of the tested file
                     //String testedFileContent = gh.fetchFileContent(fork[0], testedFilePath);
 
                     // Extract tested functions
                     TestedFunctionExtractor extractor = new TestedFunctionExtractor();
-                    Map<String, String> testFunctions = extractor.extractFunctions(testFileContent); // ToDo: What is extracted? Methods of test file or tested functions?
+                    Map<String, String> forkTestFileMethods = extractor.extractFunctions(forkTestFileContent); // ToDo: What is extracted? Methods of test file or tested functions?
 
-                    for (Map.Entry<String, String> entry : testFunctions.entrySet()){
-                        testFunctionCounter++;
-                        if (settingsViewFactory != null) settingsViewFactory.updateTestsLabel(testFunctionCounter);
+                    for (Map.Entry<String, String> entry : forkTestFileMethods.entrySet()){
+                        forkTestMethodsCount++;
+                        if (settingsViewFactory != null) settingsViewFactory.updateTestsLabel(forkTestMethodsCount);
 
-                        String testFunction = entry.getValue();
+                        String forkTestFileMethod = entry.getValue();
 
                         // Step 5: Check if the test case exists in the current project using FileFinder
-                        if (testCaseExists(fileFinder, usedClass, testFunction)) continue;
+                        if (testCaseExistsLocally(fileFinder, usedClassInForkTestFile, forkTestFileMethod)) continue;
 
-                        String testedFunctionName = extractor.extractTestedFunctionName(testFunction);
+                        String usedForkUUTMethodName = extractor.extractTestedFunctionName(forkTestFileMethod);
                         // Step 6: Check if tested function exists in the project using FileFinder
-                        if (functionExists(fileFinder, testedFilePath, testedFunctionName)) {
-                            possibleTests++;
-                            if (settingsViewFactory != null) settingsViewFactory.updateTestPropagationLabel(possibleTests);
-                            addPropagationElement(fileFinder, usedClass, testFunction, usedClass); // ToDo: Why twice usedClass??
+                        if (functionExistsLocally(fileFinder, forkUUTPath, usedForkUUTMethodName)) { // ToDo: why the path and not simply UUT name? !NEVER REACHED IN TEST RUN!
+                            possibleTestCount++;
+                            if (settingsViewFactory != null) settingsViewFactory.updateTestPropagationLabel(possibleTestCount);
+                            addPropagationElement(fileFinder, usedClassInForkTestFile, forkTestFileMethod, usedClassInForkTestFile); // ToDo: Why twice usedClass??
                         }
                     }
                 }
@@ -151,37 +151,37 @@ public class Pipeline {
         if (settingsViewFactory != null) settingsViewFactory.updateTestPropagationLabel(propagationQueue.size());
     }
 
-    private String findTestedFilePath(List<String> filePaths, String className) {
+    private String findForkUUTPath(List<String> filePaths, String className) {
         // Iterate through file paths to find the one that matches the class name
         return filePaths.stream().filter(p -> p.contains(className)).findFirst().orElse(null);
     }
 
-    private boolean classExists(FileFinder fileFinder, String className) {
+    private boolean classExistsLocally(FileFinder fileFinder, String className) {
         VirtualFile file = fileFinder.findFileRecursively(className);
         return file != null && file.exists();
     }
 
-    private boolean testCaseExists(FileFinder fileFinder, String testedClass, String testCase) {
-        String localTestFileContent = fileFinder.getTestFileContent(testedClass);
+    private boolean testCaseExistsLocally(FileFinder fileFinder, String testedClass, String forkTestMehtod) {
+        String localTestFileContent = fileFinder.getTestFileContent(testedClass); // ToDo: at least it is meant to be
         if (localTestFileContent == null) return false;
 
         CodeDuplicationDetector detector = new CodeDuplicationDetector();
-        List<String> localTestFunctions = detector.splitIntoFunctions(localTestFileContent);
-        if(localTestFunctions == null) return false;
+        List<String> localTestMethods = detector.splitIntoFunctions(localTestFileContent);
+        if(localTestMethods == null) return false;
 
-        return localTestFunctions.stream()
-                .anyMatch(f -> detector.calculateDuplicationMetric(f, testCase) > 0.9);
+        return localTestMethods.stream()
+                .anyMatch(f -> detector.calculateDuplicationMetric(f, forkTestMehtod) > 0.9);
     }
 
-    private boolean functionExists(FileFinder fileFinder, String testedFilePath, String functionName) {
+    private boolean functionExistsLocally(FileFinder fileFinder, String testedFilePath, String functionName) {
         int dotIndex = testedFilePath.lastIndexOf('.');
-        String content = fileFinder.getFileContent(testedFilePath.substring(0, dotIndex));
+        String content = fileFinder.getFileContent(testedFilePath.substring(0, dotIndex)); // ToDo: full path instead of just file name?
         return content != null && content.contains(functionName);
     }
 
-    private void addPropagationElement(FileFinder fileFinder, String usedClass, String testFunction, String testedClass){
-        VirtualFile testedFile = fileFinder.findTestFileRecursively(usedClass); // ToDo: What is intended? Local UUT or local test of local UUT? E.g., Example.java or ExampleTest.java?
-        propagationQueue.add(new PropagationElement(testedFile, testFunction, testedClass)); // TODO: Local UUT file, Potential Test Case (from fork), Tested Class (=usedClass in fork) ?
+    private void addPropagationElement(FileFinder fileFinder, String usedClass, String potentialTestMethod, String testedClass){
+        VirtualFile testedFile_localUUT_localUUTTest = fileFinder.findTestFileRecursively(usedClass); // ToDo: What is intended? Local UUT or local test of local UUT? E.g., Example.java or ExampleTest.java?
+        propagationQueue.add(new PropagationElement(testedFile_localUUT_localUUTTest, potentialTestMethod, testedClass)); // TODO: Local UUT file, Potential Test Case (from fork), Tested Class (=usedClass in fork) ?
     }
 
     private void updateUIAfterFetch() {
