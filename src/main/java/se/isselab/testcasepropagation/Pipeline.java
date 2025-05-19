@@ -39,7 +39,6 @@ public class Pipeline {
     private final List<PropagationElement> propagationQueue = new ArrayList<>();
     private final CodeDifferenceViewer codeDifferenceViewer;
     private final SettingsViewFactory settingsViewFactory;
-    private int possibleTests;
 
 
     public Pipeline(){
@@ -47,37 +46,23 @@ public class Pipeline {
         this.github = new GitHub(settings.getGithubApiKey());
         this.project = ProjectManager.getInstance().getOpenProjects()[0];
         this.codeDifferenceViewer = new CodeDifferenceViewer(this);
-        this.settingsViewFactory = new SettingsViewFactory();
+        this.settingsViewFactory = SettingsViewFactory.getInstance();
     }
 
-    public void fetchPipeline(String repository_input){
-        String repository = repository_input;
-        SettingsViewFactory settingsViewFactory = SettingsViewFactory.getInstance();
+    public void fetchPipeline(String repositoryInput){
 
-        if (settingsViewFactory != null) {
-            settingsViewFactory.enableFetchButton(false);
-        }
+        disableFetchButton();
 
         FileFinder fileFinder = new FileFinder();
+
         int testFileCounter = 0;
         int testFunctionCounter = 0;
-        possibleTests = 0;
+        int possibleTests = 0;
 
 
         // Step 1: Fetch all forks
-        List<String[]> parentForks = null;
-        List<String[]> forks = github.fetchForks(repository);
-        String parent[] = github.fetchForkedOff(repository);
-        if(parent != null){
-            parentForks = github.fetchForks(parent[0]);
-            forks.add(parent);
-        }
-        if(parentForks != null) {
-            forks.addAll(parentForks);
-        }
-        if (settingsViewFactory != null) {
-            settingsViewFactory.updateForkLabel(forks.size());
-        }
+        List<String[]> forks = gatherAllForks(repositoryInput);
+        updateForkLabel(forks.size());
 
         for(String[] fork : forks){
             // Step 2: Get all file paths in the fork
@@ -129,21 +114,8 @@ public class Pipeline {
                 }
             }
         }
-        if (settingsViewFactory != null) {
-            settingsViewFactory.updateTestFilesLabel(testFileCounter);
-        }
-        if (settingsViewFactory != null) {
-            settingsViewFactory.updateTestsLabel(testFunctionCounter);
-        }
-        if (settingsViewFactory != null) {
-            settingsViewFactory.updateTestPropagationLabel(possibleTests);
-        }
-        if (settingsViewFactory != null) {
-            settingsViewFactory.enablePropagationButton(true);
-        }
-        if (settingsViewFactory != null) {
-            settingsViewFactory.enableFetchButton(true);
-        }
+
+        updateUIAfterFetch(testFileCounter, testFunctionCounter, possibleTests);
     }
 
     public void testPropagation(boolean viewer){
@@ -163,6 +135,17 @@ public class Pipeline {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private List<String[]> gatherAllForks(String repository) {
+        List<String[]> forks = github.fetchForks(repository);
+        String[] parent = github.fetchForkedOff(repository);
+        if (parent != null) {
+            forks.add(parent);
+            List<String[]> parentForks = github.fetchForks(parent[0]);
+            if (!parentForks.isEmpty()) forks.addAll(parentForks);
+        }
+        return forks;
     }
 
     public void removePropagationElement() {
@@ -223,5 +206,25 @@ public class Pipeline {
         VirtualFile testedFile = fileFinder.findTestFileRecursively(usedClass);
         PropagationElement propagationElement = new PropagationElement(testedFile, testFunction, testedClass);
         propagationQueue.add(propagationElement);
+    }
+
+    private void updateUIAfterFetch(int testFileCounter, int testFunctionCounter, int possibleTests) {
+        if (settingsViewFactory != null) {
+            settingsViewFactory.updateTestFilesLabel(testFileCounter);
+            settingsViewFactory.updateTestsLabel(testFunctionCounter);
+            settingsViewFactory.updateTestPropagationLabel(possibleTests);
+            settingsViewFactory.enablePropagationButton(true);
+            settingsViewFactory.enableFetchButton(true);
+        }
+    }
+
+    private void disableFetchButton(){
+        if (settingsViewFactory != null) {
+            settingsViewFactory.enableFetchButton(false);
+        }
+    }
+
+    private void updateForkLabel(int count){
+        if (settingsViewFactory != null) settingsViewFactory.updateForkLabel(count);
     }
 }
