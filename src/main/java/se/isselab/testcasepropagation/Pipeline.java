@@ -21,6 +21,7 @@ import se.isselab.testcasepropagation.codeCollection.GitHub;
 
 import java.io.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
@@ -67,49 +68,43 @@ public class Pipeline {
         for(String[] fork : forks){
             // Step 2: Get all file paths in the fork
             List<String> filePaths = github.fetchAllFilePaths(fork[0]);
+            List<String> testFilePaths = filePaths.stream()
+                    .filter(p -> p.endsWith(".java") && p.toLowerCase().contains("test"))
+                    .collect(Collectors.toList());
 
-            for (String filePath : filePaths) {
-                if (filePath.endsWith(".java") && filePath.toLowerCase().contains("test")) {
-                    // Step 3: Fetch content of test files
-                    testFileCounter++;
-                    String testFileContent = github.fetchFileContent(fork[0], filePath);
+            for (String testFilePath : testFilePaths){
+                testFileCounter++;
+                // Step 3: Fetch content of test files
+                String testFileContent = github.fetchFileContent(fork[0], testFilePath);
+                // Step 4: Extract tested code
+                Set<String> usedClasses = new ClassFileFinder().extractUsedClassesFromString(testFileContent);
 
-                    // Step 4: Extract tested code
-                    ClassFileFinder classFileFinder = new ClassFileFinder();
-                    Set<String> usedClasses = classFileFinder.extractUsedClassesFromString(testFileContent);
+                for (String usedClass : usedClasses){
+                    // Find the file path of the class being tested
+                    if (!classExists(fileFinder, usedClass)) continue; // Skip this class if it doesn't exist
+                    String testedFilePath = findTestedFilePath(filePaths, usedClass);
+                    if (testedFilePath == null) continue;
 
-                    for (String usedClass : usedClasses) {
-                        // Find the file path of the class being tested
-                        if (!doesClassExist(fileFinder, usedClass)) {
-                            System.out.println("Tested class " + usedClass + " does not exist in the project.");
-                            continue;  // Skip this class if it doesn't exist
-                        }
+                    // Fetch content of the tested file
+                    //String testedFileContent = gh.fetchFileContent(fork[0], testedFilePath);
 
-                        String testedFilePath = findTestedFilePath(filePaths, usedClass);
+                    // Extract tested functions
+                    TestedFunctionExtractor extractor = new TestedFunctionExtractor();
+                    Map<String, String> testFunctions = extractor.extractFunctions(testFileContent);
 
-                        if (testedFilePath != null) {
-                            // Fetch content of the tested file
-                            //String testedFileContent = gh.fetchFileContent(fork[0], testedFilePath);
+                    for (Map.Entry<String, String> entry : testFunctions.entrySet()){
+                        testFunctionCounter++;
+                        String testFunction = entry.getValue();
 
-                            // Extract tested functions
-                            TestedFunctionExtractor testedFunctionExtractor = new TestedFunctionExtractor();
-                            Map<String, String> testFunctions = testedFunctionExtractor.extractFunctions(testFileContent);
+                        // Step 5: Check if the test case exists in the current project using FileFinder
+                        if (testCaseExists(fileFinder, usedClass, testFunction)) continue;
 
-                            for (Map.Entry<String, String> entry : testFunctions.entrySet()) {
-                                String testCase = entry.getKey();
-                                String testFunction = entry.getValue();
-                                testFunctionCounter++;
-                                // Step 5: Check if the test case exists in the current project using FileFinder
-                                if (!doesTestCaseExist(fileFinder, usedClass, testFunction)) {
-                                    String testedFunctionName = testedFunctionExtractor.extractTestedFunctionName(testFunction);
-                                    // Step 6: Check if tested function exists in the project using FileFinder
-                                    if (doesFunctionExist(fileFinder, testedFilePath, testedFunctionName)) {
-                                        possibleTests++;
-                                        addPropagationElement(fileFinder, usedClass, testFunction, usedClass);
-                                    }
-                                }
-                            }
-                        }
+                        String testedFunctionName = extractor.extractTestedFunctionName(testFunction);
+                        // Step 6: Check if tested function exists in the project using FileFinder
+                        if (functionExists(fileFinder, testedFilePath, testedFunctionName)) {
+                            possibleTests++;
+                            addPropagationElement(fileFinder, usedClass, testFunction, usedClass); // ToDo: Why twice usedClass??
+                        };
                     }
                 }
             }
@@ -161,45 +156,32 @@ public class Pipeline {
         }
     }
 
-    private String findTestedFilePath(List<String> filePaths, String usedClass) {
+    private String findTestedFilePath(List<String> filePaths, String className) {
         // Iterate through file paths to find the one that matches the class name
-        for (String filePath : filePaths) {
-            if (filePath.contains(usedClass)) {
-                return filePath;
-            }
-        }
-        return null;
+        return filePaths.stream().filter(p -> p.contains(className)).findFirst().orElse(null);
     }
 
-    private boolean doesClassExist(FileFinder fileFinder, String className) {
-        VirtualFile classFile = fileFinder.findFileRecursively(className);
-        return classFile != null && classFile.exists();
+    private boolean classExists(FileFinder fileFinder, String className) {
+        VirtualFile file = fileFinder.findFileRecursively(className);
+        return file != null && file.exists();
     }
 
-    private boolean doesTestCaseExist(FileFinder fileFinder, String testedClass, String testCase) {
-        String fileContent = fileFinder.getTestFileContent(testedClass);
-        CodeDuplicationDetector codeDuplicationDetector = new CodeDuplicationDetector();
-        List<String> functions = codeDuplicationDetector.splitIntoFunctions(fileContent);
-        if(functions == null){
-            return false;
-        }
-        for(String function : functions){
-            double metric = codeDuplicationDetector.calculateDuplicationMetric(function, testCase);
-            if(metric > 0.9) {
-                return true;
-            }
-        }
-        return false;
+    private boolean testCaseExists(FileFinder fileFinder, String testedClass, String testCase) {
+        String localTestFileContent = fileFinder.getTestFileContent(testedClass);
+        if (localTestFileContent == null) return false;
+
+        CodeDuplicationDetector detector = new CodeDuplicationDetector();
+        List<String> localTestFunctions = detector.splitIntoFunctions(localTestFileContent);
+        if(localTestFunctions == null) return false;
+
+        return localTestFunctions.stream()
+                .anyMatch(f -> detector.calculateDuplicationMetric(f, testCase) > 0.9);
     }
 
-    private boolean doesFunctionExist(FileFinder fileFinder, String testedFilePath, String functionName) {
-        int firstDotIndex = testedFilePath.indexOf('.');
-
-        String fileContent = fileFinder.getFileContent(testedFilePath.substring(0, firstDotIndex));
-        if(fileContent == null) {
-            return false;
-        }
-        return fileContent.contains(functionName);
+    private boolean functionExists(FileFinder fileFinder, String testedFilePath, String functionName) {
+        int dotIndex = testedFilePath.lastIndexOf('.');
+        String content = fileFinder.getFileContent(testedFilePath.substring(0, dotIndex));
+        return content != null && content.contains(functionName);
     }
 
     private void addPropagationElement(FileFinder fileFinder, String usedClass, String testFunction, String testedClass){
