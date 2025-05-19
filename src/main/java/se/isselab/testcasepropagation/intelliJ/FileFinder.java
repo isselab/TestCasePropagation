@@ -70,7 +70,7 @@ public class FileFinder {
         for (VirtualFile file : baseDir.getChildren()) {
             if (file.isDirectory()) {
                 // Recursively search in subdirectories
-                VirtualFile foundFile = findFileRecursively(file, fileName);
+                VirtualFile foundFile = findFileRecursively(file, fileName); // ToDo: This is not intended!
                 if (foundFile != null) {
                     return foundFile;
                 }

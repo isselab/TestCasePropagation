@@ -104,7 +104,7 @@ public class Pipeline {
                         if (functionExists(fileFinder, testedFilePath, testedFunctionName)) {
                             possibleTests++;
                             addPropagationElement(fileFinder, usedClass, testFunction, usedClass); // ToDo: Why twice usedClass??
-                        };
+                        }
                     }
                 }
             }
@@ -115,20 +115,15 @@ public class Pipeline {
 
     public void testPropagation(boolean viewer){
         if(propagationQueue.isEmpty()){
-            SettingsViewFactory settingsViewFactory = SettingsViewFactory.getInstance();
-            if (settingsViewFactory != null) {
-                settingsViewFactory.enablePropagationButton(false);
-            }
+            if (settingsViewFactory != null) settingsViewFactory.enablePropagationButton(false);
             return;
         }
-        PropagationElement propagationElement = propagationQueue.get(0);
-        VirtualFile virtualFile = propagationElement.getProjectFile();
-        String testFunction = propagationElement.getTestCase();
-        String testedClass = propagationElement.getTestedClass();
+
+        PropagationElement element = propagationQueue.get(0);
         try {
-            codeDifferenceViewer.showDiff(project, virtualFile, testFunction, testedClass, viewer);
+            codeDifferenceViewer.showDiff(project, element.getProjectFile(), element.getTestCase(), element.getTestedClass(), viewer);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Failed to display code diff", e);
         }
     }
 
@@ -144,16 +139,11 @@ public class Pipeline {
     }
 
     public void removePropagationElement() {
-        if (!propagationQueue.isEmpty()) {
-            propagationQueue.remove(0); // Remove the element at position 0
-        }
+        if (!propagationQueue.isEmpty()) propagationQueue.remove(0); // Remove the element at position 0
     }
 
     public void updateLabel() {
-        SettingsViewFactory settingsViewFactory = SettingsViewFactory.getInstance();
-        if (settingsViewFactory != null) {
-            settingsViewFactory.updateTestPropagationLabel(propagationQueue.size());
-        }
+        if (settingsViewFactory != null) settingsViewFactory.updateTestPropagationLabel(propagationQueue.size());
     }
 
     private String findTestedFilePath(List<String> filePaths, String className) {
@@ -185,9 +175,8 @@ public class Pipeline {
     }
 
     private void addPropagationElement(FileFinder fileFinder, String usedClass, String testFunction, String testedClass){
-        VirtualFile testedFile = fileFinder.findTestFileRecursively(usedClass);
-        PropagationElement propagationElement = new PropagationElement(testedFile, testFunction, testedClass);
-        propagationQueue.add(propagationElement);
+        VirtualFile testedFile = fileFinder.findTestFileRecursively(usedClass); // ToDo: What is intended? Local UUT or local test of local UUT? E.g., Example.java or ExampleTest.java?
+        propagationQueue.add(new PropagationElement(testedFile, testFunction, testedClass));
     }
 
     private void updateUIAfterFetch(int testFileCounter, int testFunctionCounter, int possibleTests) {
