@@ -29,26 +29,25 @@ import se.isselab.testcasepropagation.codeDuplication.CodeDuplicationDetector;
 import se.isselab.testcasepropagation.codeDuplication.TestedFunctionExtractor;
 import se.isselab.testcasepropagation.helper.PropagationElement;
 import se.isselab.testcasepropagation.intelliJ.FileFinder;
-import se.isselab.testcasepropagation.intelliJ.FileHandler;
 import se.isselab.testcasepropagation.intelliJ.settings.SettingsViewFactory;
 import se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings;
 import se.isselab.testcasepropagation.intelliJ.visualize.CodeDifferenceViewer;
 
 public class Pipeline {
-    private final GitHub gh;
-
-    private Project project;
-    private ArrayList<PropagationElement> propagationQueue;
+    private final GitHub github;
+    private final Project project;
+    private final List<PropagationElement> propagationQueue = new ArrayList<>();
+    private final CodeDifferenceViewer codeDifferenceViewer;
+    private final SettingsViewFactory settingsViewFactory;
     private int possibleTests;
-    private CodeDifferenceViewer codeDifferenceViewer;
 
 
     public Pipeline(){
         TestCasePropagationSettings settings = TestCasePropagationSettings.getInstance();
-        gh = new GitHub(settings.getGithubApiKey());
-        project = ProjectManager.getInstance().getOpenProjects()[0];
-        propagationQueue = new ArrayList<PropagationElement>();
-        codeDifferenceViewer = new CodeDifferenceViewer(this);
+        this.github = new GitHub(settings.getGithubApiKey());
+        this.project = ProjectManager.getInstance().getOpenProjects()[0];
+        this.codeDifferenceViewer = new CodeDifferenceViewer(this);
+        this.settingsViewFactory = new SettingsViewFactory();
     }
 
     public void fetchPipeline(String repository_input){
@@ -67,10 +66,10 @@ public class Pipeline {
 
         // Step 1: Fetch all forks
         List<String[]> parentForks = null;
-        List<String[]> forks = gh.fetchForks(repository);
-        String parent[] = gh.fetchForkedOff(repository);
+        List<String[]> forks = github.fetchForks(repository);
+        String parent[] = github.fetchForkedOff(repository);
         if(parent != null){
-            parentForks = gh.fetchForks(parent[0]);
+            parentForks = github.fetchForks(parent[0]);
             forks.add(parent);
         }
         if(parentForks != null) {
@@ -82,13 +81,13 @@ public class Pipeline {
 
         for(String[] fork : forks){
             // Step 2: Get all file paths in the fork
-            List<String> filePaths = gh.fetchAllFilePaths(fork[0]);
+            List<String> filePaths = github.fetchAllFilePaths(fork[0]);
 
             for (String filePath : filePaths) {
                 if (filePath.endsWith(".java") && filePath.toLowerCase().contains("test")) {
                     // Step 3: Fetch content of test files
                     testFileCounter++;
-                    String testFileContent = gh.fetchFileContent(fork[0], filePath);
+                    String testFileContent = github.fetchFileContent(fork[0], filePath);
 
                     // Step 4: Extract tested code
                     ClassFileFinder classFileFinder = new ClassFileFinder();
