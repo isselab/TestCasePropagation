@@ -115,7 +115,7 @@ public class Pipeline {
             }
         }
 
-        updateUIAfterFetch(testFileCounter, testFunctionCounter, possibleTests);
+        updateUIAfterFetch();
     }
 
     public void testPropagation(boolean viewer){
@@ -184,11 +184,8 @@ public class Pipeline {
         propagationQueue.add(new PropagationElement(testedFile, testFunction, testedClass)); // TODO: Local UUT file, Potential Test Case (from fork), Tested Class (=usedClass in fork) ?
     }
 
-    private void updateUIAfterFetch(int testFileCounter, int testFunctionCounter, int possibleTests) {
+    private void updateUIAfterFetch() {
         if (settingsViewFactory != null) {
-            //settingsViewFactory.updateTestFilesLabel(testFileCounter);
-            //settingsViewFactory.updateTestsLabel(testFunctionCounter);
-            //settingsViewFactory.updateTestPropagationLabel(possibleTests);
             settingsViewFactory.enablePropagationButton(true);
             settingsViewFactory.enableFetchButton(true);
         }
