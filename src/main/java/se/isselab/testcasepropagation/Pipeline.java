@@ -74,6 +74,8 @@ public class Pipeline {
 
             for (String testFilePath : testFilePaths){
                 testFileCounter++;
+                if (settingsViewFactory != null) settingsViewFactory.updateTestFilesLabel(testFileCounter);
+
                 // Step 3: Fetch content of test files
                 String testFileContent = github.fetchFileContent(fork[0], testFilePath);
                 // Step 4: Extract tested code
@@ -90,10 +92,12 @@ public class Pipeline {
 
                     // Extract tested functions
                     TestedFunctionExtractor extractor = new TestedFunctionExtractor();
-                    Map<String, String> testFunctions = extractor.extractFunctions(testFileContent);
+                    Map<String, String> testFunctions = extractor.extractFunctions(testFileContent); // ToDo: What is extracted? Methods of test file or tested functions?
 
                     for (Map.Entry<String, String> entry : testFunctions.entrySet()){
                         testFunctionCounter++;
+                        if (settingsViewFactory != null) settingsViewFactory.updateTestsLabel(testFunctionCounter);
+
                         String testFunction = entry.getValue();
 
                         // Step 5: Check if the test case exists in the current project using FileFinder
@@ -103,6 +107,7 @@ public class Pipeline {
                         // Step 6: Check if tested function exists in the project using FileFinder
                         if (functionExists(fileFinder, testedFilePath, testedFunctionName)) {
                             possibleTests++;
+                            if (settingsViewFactory != null) settingsViewFactory.updateTestPropagationLabel(possibleTests);
                             addPropagationElement(fileFinder, usedClass, testFunction, usedClass); // ToDo: Why twice usedClass??
                         }
                     }
@@ -176,14 +181,14 @@ public class Pipeline {
 
     private void addPropagationElement(FileFinder fileFinder, String usedClass, String testFunction, String testedClass){
         VirtualFile testedFile = fileFinder.findTestFileRecursively(usedClass); // ToDo: What is intended? Local UUT or local test of local UUT? E.g., Example.java or ExampleTest.java?
-        propagationQueue.add(new PropagationElement(testedFile, testFunction, testedClass));
+        propagationQueue.add(new PropagationElement(testedFile, testFunction, testedClass)); // TODO: Local UUT file, Potential Test Case (from fork), Tested Class (=usedClass in fork) ?
     }
 
     private void updateUIAfterFetch(int testFileCounter, int testFunctionCounter, int possibleTests) {
         if (settingsViewFactory != null) {
-            settingsViewFactory.updateTestFilesLabel(testFileCounter);
-            settingsViewFactory.updateTestsLabel(testFunctionCounter);
-            settingsViewFactory.updateTestPropagationLabel(possibleTests);
+            //settingsViewFactory.updateTestFilesLabel(testFileCounter);
+            //settingsViewFactory.updateTestsLabel(testFunctionCounter);
+            //settingsViewFactory.updateTestPropagationLabel(possibleTests);
             settingsViewFactory.enablePropagationButton(true);
             settingsViewFactory.enableFetchButton(true);
         }
