@@ -257,7 +257,9 @@ public class GitHub {
         JSONArray fileArray = commitJson.getJSONArray("files");
 
         for (int i = 0; i < fileArray.length(); i++) {
-            String filename = fileArray.getJSONObject(i).getString("filename");
+            JSONObject file = fileArray.getJSONObject(i);
+            String filename = file.getString("filename");
+            if ("removed".equals(file.getString("status"))) continue;
             if (filename.endsWith(".java")) files.add(filename);
         }
 
