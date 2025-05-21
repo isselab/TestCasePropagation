@@ -257,7 +257,8 @@ public class GitHub {
         JSONArray fileArray = commitJson.getJSONArray("files");
 
         for (int i = 0; i < fileArray.length(); i++) {
-            files.add(fileArray.getJSONObject(i).getString("filename"));
+            String filename = fileArray.getJSONObject(i).getString("filename");
+            if (filename.endsWith(".java")) files.add(filename);
         }
 
         return files;
