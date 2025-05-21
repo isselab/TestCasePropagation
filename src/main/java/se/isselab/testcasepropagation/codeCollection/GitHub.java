@@ -27,8 +27,11 @@ import org.json.JSONObject;
 import se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class GitHub {
     private String accessToken;
@@ -219,5 +222,73 @@ public class GitHub {
         }
 
         return null; // If not forked from another repository
+    }
+
+    public Set<String> findModifiedFilesAfterCreation(String owner, String repo) throws IOException {
+        Instant creationDate = getRepoCreationDate(owner, repo);
+
+        Set<String> modifiedFiles = new HashSet<>();
+        String commitsUrl = "https://api.github.com/repos/" + owner + "/" + repo + "/commits?since=" + creationDate.toString();
+
+        while (commitsUrl != null) {
+            JSONObject response = getJson(commitsUrl);
+            JSONArray commits = response.getJSONArray("data");
+
+            for (int i = 0; i < commits.length(); i++) {
+                JSONObject commit = commits.getJSONObject(i);
+                String sha = commit.getString("sha");
+                modifiedFiles.addAll(getFilesInCommit(owner, repo, sha));
+            }
+
+            commitsUrl = response.optString("nextLink", null);
+        }
+
+        return modifiedFiles;
+    }
+
+    private Instant getRepoCreationDate(String owner, String repo) throws IOException {
+        JSONObject repoJson = getJson("https://api.github.com/repos/" + owner + "/" + repo).getJSONObject("data");
+        return Instant.parse(repoJson.getString("created_at"));
+    }
+
+    private Set<String> getFilesInCommit(String owner, String repo, String sha) throws IOException {
+        JSONObject commitJson = getJson("https://api.github.com/repos/" + owner + "/" + repo + "/commits/" + sha).getJSONObject("data");
+        Set<String> files = new HashSet<>();
+        JSONArray fileArray = commitJson.getJSONArray("files");
+
+        for (int i = 0; i < fileArray.length(); i++) {
+            files.add(fileArray.getJSONObject(i).getString("filename"));
+        }
+
+        return files;
+    }
+
+    private JSONObject getJson(String url) throws IOException {
+        HttpClient client = HttpClients.createDefault();
+        HttpGet request = new HttpGet(url);
+        request.addHeader("Authorization", "Bearer " + accessToken);
+        request.addHeader("Accept", "application/vnd.github.v3+json");
+
+        HttpResponse response = client.execute(request);
+        HttpEntity entity = response.getEntity();
+        String responseBody = EntityUtils.toString(entity);
+
+        // Parse pagination headers if present
+        String linkHeader = response.getFirstHeader("Link") != null ? response.getFirstHeader("Link").getValue() : null;
+        String nextLink = null;
+
+        if (linkHeader != null) {
+            for (String part : linkHeader.split(",")) {
+                if (part.contains("rel=\"next\"")) {
+                    nextLink = part.substring(part.indexOf("<") + 1, part.indexOf(">"));
+                }
+            }
+        }
+
+        JSONObject result = new JSONObject();
+        result.put("data", new JSONArray(responseBody));
+        if (nextLink != null) result.put("nextLink", nextLink);
+
+        return result;
     }
 }
