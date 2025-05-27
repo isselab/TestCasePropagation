@@ -312,8 +312,8 @@ public class GitHub {
                     String parentRepo = repoJson.getJSONObject("parent").getString("full_name");
                     String parentDefaultBranch = getJson("https://api.github.com/repos/" + parentRepo).getJSONObject("data").getString("default_branch");
                     if (!hasAtLeast5ForkSpecificCommits(repo, parentDefaultBranch, forkDefaultBranch)) continue;
+                    if (!hasAtLeast30DaysEvolution(repo, parentDefaultBranch, forkDefaultBranch)) continue;
                 }
-                if (!hasAtLeast30DaysEvolution(repo)) continue;
                 if (wasDiscontinuedAfterMerge(repo)) continue;
 
                 // Collect metadata
@@ -373,7 +373,9 @@ public class GitHub {
             // 1. Get parent info
             String[] parentInfo = fetchForkedOff(repository);
             if (parentInfo == null) return true;
+
             String parentRepo = parentInfo[0];
+            String forkOwner = repository.split("/")[0];
 
             // 2. Get fork creation date
             Instant forkCreationDate = Instant.parse(parentInfo[1]);
@@ -383,7 +385,7 @@ public class GitHub {
             if (commits.length() < 5) return false;
 
             // 4. Accurate fork-specific check with /compare/
-            String compareUrl = "https://api.github.com/repos/" + repository + "/compare/" + parentRepo + ":" + parentDefaultBranch + "..." + forkDefaultBranch;
+            String compareUrl = "https://api.github.com/repos/" + parentRepo + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch;
             JSONObject compareJson = getJson(compareUrl).getJSONObject("data");
             int aheadBy = compareJson.getInt("ahead_by");
 
@@ -394,18 +396,45 @@ public class GitHub {
         }
     }
 
-    private boolean hasAtLeast30DaysEvolution(String repository) {
+    private boolean hasAtLeast30DaysEvolution(String repository, String parentDefaultBranch, String forkDefaultBranch) {
         try {
-            String commitsUrl = "https://api.github.com/repos/" + repository + "/commits";
-            JSONObject response = getJson(commitsUrl);
-            JSONArray commits = response.getJSONArray("data");
+            String[] parentInfo = fetchForkedOff(repository);
+            if (parentInfo == null) {
+                JSONArray commits = getJson("https://api.github.com/repos/" + repository + "/commits").getJSONArray("data"); // ToDo: pagination still missing!
+                if (commits.length() < 2) return false;
 
-            if (commits.length() < 2) return false;
+                Instant first = Instant.parse(commits.getJSONObject(commits.length() - 1).getJSONObject("commit").getJSONObject("committer").getString("date"));
+                Instant last = Instant.parse(commits.getJSONObject(0).getJSONObject("commit").getJSONObject("committer").getString("date"));
 
-            Instant first = Instant.parse(commits.getJSONObject(commits.length() - 1).getJSONObject("commit").getJSONObject("committer").getString("date"));
-            Instant last = Instant.parse(commits.getJSONObject(0).getJSONObject("commit").getJSONObject("committer").getString("date"));
+                return Duration.between(first, last).toDays() >= 30;
+            } else {
+                String parentRepo = parentInfo[0];
+                String forkOwner = repository.split("/")[0];
 
-            return Duration.between(first, last).toDays() >= 30;
+                // Compare parent...fork to get only fork-specific commits
+                String compareUrl = "https://api.github.com/repos/" + parentRepo + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch;
+                JSONObject compareJson = getJson(compareUrl).getJSONObject("data");
+
+                if (!compareJson.has("commits")) return false;
+                JSONArray forkCommits = compareJson.getJSONArray("commits");
+                if (forkCommits.isEmpty()) return false;
+
+                // Get the earliest and latest commit dates
+                Instant earliest = Instant.MAX;
+                Instant latest = Instant.MIN;
+
+                for (int i = 0; i < forkCommits.length(); i++) {
+                    JSONObject commit = forkCommits.getJSONObject(i).getJSONObject("commit");
+                    String dateStr = commit.getJSONObject("committer").getString("date");
+                    Instant date = Instant.parse(dateStr);
+
+                    if (date.isBefore(earliest)) earliest = date;
+                    if (date.isAfter(latest)) latest = date;
+                }
+
+                long days = Duration.between(earliest, latest).toDays();
+                return days >= 30;
+            }
 
         } catch (IOException e) {
             return false;
