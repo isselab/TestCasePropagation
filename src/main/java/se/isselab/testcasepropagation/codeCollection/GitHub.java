@@ -276,26 +276,30 @@ public class GitHub {
 
         HttpResponse response = client.execute(request);
         HttpEntity entity = response.getEntity();
-        String responseBody = EntityUtils.toString(entity);
+        String body = EntityUtils.toString(entity);
+
+        JSONObject json;
+        try {
+            json = new JSONObject(body);
+        } catch (Exception e) {
+            json = new JSONObject();
+            json.put("data", new JSONArray(body));
+        }
 
         // Parse pagination headers if present
         String linkHeader = response.getFirstHeader("Link") != null ? response.getFirstHeader("Link").getValue() : null;
-        String nextLink = null;
 
         if (linkHeader != null) {
             for (String part : linkHeader.split(",")) {
                 if (part.contains("rel=\"next\"")) {
-                    nextLink = part.substring(part.indexOf("<") + 1, part.indexOf(">"));
+                    String nextLink = part.substring(part.indexOf("<") + 1, part.indexOf(">"));
+                    json.put("nextLink", nextLink);
                 }
             }
         }
 
-        JSONObject result = new JSONObject();
-        result.put("data", new JSONArray(responseBody));
-        if (nextLink != null) result.put("nextLink", nextLink);
-
-        jsonCache.put(url, result);
-        return result;
+        jsonCache.put(url, json);
+        return json;
     }
 
     public List<String> fetchForkSelection(String repository) {
