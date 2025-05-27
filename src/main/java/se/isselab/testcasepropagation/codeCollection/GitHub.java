@@ -27,6 +27,7 @@ import org.json.JSONObject;
 import se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -293,5 +294,83 @@ public class GitHub {
         if (nextLink != null) result.put("nextLink", nextLink);
 
         return result;
+    }
+
+    public List<String> fetchForkSelection(String repository) {
+        Set<String> candidateForks = new HashSet<>();
+
+        // Step 1: Find the parent
+        String[] parentInfo = fetchForkedOff(repository);
+        if (parentInfo != null) {
+            String parentRepo = parentInfo[0];
+            candidateForks.add(parentRepo);
+
+            // Step 2: Add siblings
+            for (String[] fork : fetchForks(parentRepo)) {
+                candidateForks.add(fork[0]);
+            }
+            candidateForks.remove(repository);
+        }
+
+        // Step 3: Add children
+        for (String[] fork : fetchForks(repository)){
+            candidateForks.add(fork[0]);
+        }
+
+        // Step 4: Filter and collect metadata
+        List<JSONObject> qualifiedForks = new ArrayList<>();
+        for (String repo : candidateForks) {
+            try {
+                // Commit filtering
+                JSONArray commits = getJson("https://api.github.com/repos/" + repo + "/commits").getJSONArray("data");
+                if (commits.length() < 5) continue;
+
+                // 30 days of evolution
+                Instant first = Instant.parse(commits.getJSONObject(commits.length() - 1).getJSONObject("commit").getJSONObject("author").getString("date"));
+                Instant last = Instant.parse(commits.getJSONObject(0).getJSONObject("commit").getJSONObject("author").getString("date"));
+                if (Duration.between(first, last).toDays() < 30) continue;
+
+                // Merge commit check
+                boolean discontinued = false;
+                for (int i = 0; i < commits.length(); i++) {
+                    if (commits.getJSONObject(i).has("parents") && commits.getJSONObject(i).getJSONArray("parents").length() > 1) {
+                        discontinued = true;
+                        break;
+                    }
+                }
+                if (discontinued) continue;
+
+                // Collect metadata
+                JSONObject repoData = getJson("https://api.github.com/repos/" + repo).getJSONObject("data");
+                int contributorsCount = getJson("https://api.github.com/repos/" + repo + "/contributors").getJSONArray("data").length();
+
+                repoData.put("full_name", repo);
+                repoData.put("commits", commits.length());
+                repoData.put("contributors", contributorsCount);
+
+                qualifiedForks.add(repoData);
+
+            } catch (Exception e) {
+                System.err.println("Skipping repo due to error: " + repo);
+            }
+        }
+
+        // Step 5: Sort by commits, contributors, stars, forks
+        qualifiedForks.sort((a, b) -> {
+            int cmp = Integer.compare(b.getInt("commits"), a.getInt("commits"));
+            if (cmp != 0) return cmp;
+            cmp = Integer.compare(b.getInt("contributors"), a.getInt("contributors"));
+            if (cmp != 0) return cmp;
+            cmp = Integer.compare(b.getInt("stargazers_count"), a.getInt("stargazers_count"));
+            if (cmp != 0) return cmp;
+            return Integer.compare(b.getInt("forks_count"), a.getInt("forks_count"));
+        });
+
+        // Step 6: Return up to top 100
+        List<String> topForks = new ArrayList<>();
+        for (int i = 0; i < Math.min(100, qualifiedForks.size()); i++) {
+            topForks.add(qualifiedForks.get(i).getString("full_name"));
+        }
+        return topForks;
     }
 }
