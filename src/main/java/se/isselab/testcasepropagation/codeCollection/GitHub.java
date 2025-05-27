@@ -29,13 +29,12 @@ import se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSetti
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class GitHub {
-    private String accessToken;
+    private final String accessToken;
+    private final Map<String, JSONObject> jsonCache = new HashMap<>();
+
     public GitHub(String accessToken){
         this.accessToken = accessToken;
     }
@@ -268,6 +267,8 @@ public class GitHub {
     }
 
     private JSONObject getJson(String url) throws IOException {
+        if (jsonCache.containsKey(url)) return jsonCache.get(url);
+
         HttpClient client = HttpClients.createDefault();
         HttpGet request = new HttpGet(url);
         request.addHeader("Authorization", "Bearer " + accessToken);
@@ -293,6 +294,7 @@ public class GitHub {
         result.put("data", new JSONArray(responseBody));
         if (nextLink != null) result.put("nextLink", nextLink);
 
+        jsonCache.put(url, result);
         return result;
     }
 
