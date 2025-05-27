@@ -297,65 +297,40 @@ public class GitHub {
     }
 
     public List<String> fetchForkSelection(String repository) {
-        Set<String> candidateForks = new HashSet<>();
+        // Step 1: Fetch all forks (parent, siblings, children)
+        Set<String> candidateForks = fetchAllForks(repository);
 
-        // Step 1: Find the parent
-        String[] parentInfo = fetchForkedOff(repository);
-        if (parentInfo != null) {
-            String parentRepo = parentInfo[0];
-            candidateForks.add(parentRepo);
-
-            // Step 2: Add siblings
-            for (String[] fork : fetchForks(parentRepo)) {
-                candidateForks.add(fork[0]);
-            }
-            candidateForks.remove(repository);
-        }
-
-        // Step 3: Add children
-        for (String[] fork : fetchForks(repository)){
-            candidateForks.add(fork[0]);
-        }
-
-        // Step 4: Filter and collect metadata
+        // Step 2: Filter and collect metadata
         List<JSONObject> qualifiedForks = new ArrayList<>();
         for (String repo : candidateForks) {
             try {
-                // Commit filtering
-                JSONArray commits = getJson("https://api.github.com/repos/" + repo + "/commits").getJSONArray("data");
-                if (commits.length() < 5) continue;
+                JSONObject repoJson = getJson("https://api.github.com/repos/" + repo).getJSONObject("data");
 
-                // 30 days of evolution
-                Instant first = Instant.parse(commits.getJSONObject(commits.length() - 1).getJSONObject("commit").getJSONObject("author").getString("date"));
-                Instant last = Instant.parse(commits.getJSONObject(0).getJSONObject("commit").getJSONObject("author").getString("date"));
-                if (Duration.between(first, last).toDays() < 30) continue;
-
-                // Merge commit check
-                boolean discontinued = false;
-                for (int i = 0; i < commits.length(); i++) {
-                    if (commits.getJSONObject(i).has("parents") && commits.getJSONObject(i).getJSONArray("parents").length() > 1) {
-                        discontinued = true;
-                        break;
-                    }
+                // ASE paper checks
+                String forkDefaultBranch = repoJson.getString("default_branch");
+                if (repoJson.has("parent")) {
+                    String parentRepo = repoJson.getJSONObject("parent").getString("full_name");
+                    String parentDefaultBranch = getJson("https://api.github.com/repos/" + parentRepo).getJSONObject("data").getString("default_branch");
+                    if (!hasAtLeast5ForkSpecificCommits(repo, parentDefaultBranch, forkDefaultBranch)) continue;
                 }
-                if (discontinued) continue;
+                if (!hasAtLeast30DaysEvolution(repo)) continue;
+                if (wasDiscontinuedAfterMerge(repo)) continue;
 
                 // Collect metadata
-                JSONObject repoData = getJson("https://api.github.com/repos/" + repo).getJSONObject("data");
+                JSONArray commits = getJson("https://api.github.com/repos/" + repo + "/commits").getJSONArray("data");
                 int contributorsCount = getJson("https://api.github.com/repos/" + repo + "/contributors").getJSONArray("data").length();
 
-                repoData.put("full_name", repo);
-                repoData.put("commits", commits.length());
-                repoData.put("contributors", contributorsCount);
+                repoJson.put("commits", commits.length());
+                repoJson.put("contributors", contributorsCount);
 
-                qualifiedForks.add(repoData);
+                qualifiedForks.add(repoJson);
 
             } catch (Exception e) {
                 System.err.println("Skipping repo due to error: " + repo);
             }
         }
 
-        // Step 5: Sort by commits, contributors, stars, forks
+        // Step 3: Sort by commits, contributors, stars, forks
         qualifiedForks.sort((a, b) -> {
             int cmp = Integer.compare(b.getInt("commits"), a.getInt("commits"));
             if (cmp != 0) return cmp;
@@ -366,11 +341,96 @@ public class GitHub {
             return Integer.compare(b.getInt("forks_count"), a.getInt("forks_count"));
         });
 
-        // Step 6: Return up to top 100
-        List<String> topForks = new ArrayList<>();
-        for (int i = 0; i < Math.min(100, qualifiedForks.size()); i++) {
-            topForks.add(qualifiedForks.get(i).getString("full_name"));
+        // Step 4: Return up to top 100
+        return qualifiedForks.stream().limit(100).map(f -> f.getString("full_name")).toList();
+    }
+
+    private Set<String> fetchAllForks(String repository) {
+        Set<String> forks = new HashSet<>();
+
+        // Step 1: Find the parent
+        String[] parentInfo = fetchForkedOff(repository);
+        if (parentInfo != null) {
+            String parentRepo = parentInfo[0];
+            forks.add(parentRepo);
+
+            // Step 2: Add siblings
+            for (String[] fork : fetchForks(parentRepo)) {
+                forks.add(fork[0]);
+            }
+            forks.remove(repository);
         }
-        return topForks;
+
+        // Step 3: Add children
+        for (String[] fork : fetchForks(repository)){
+            forks.add(fork[0]);
+        }
+        return forks;
+    }
+
+    private boolean hasAtLeast5ForkSpecificCommits(String repository, String parentDefaultBranch, String forkDefaultBranch) {
+        try {
+            // 1. Get parent info
+            String[] parentInfo = fetchForkedOff(repository);
+            if (parentInfo == null) return true;
+            String parentRepo = parentInfo[0];
+
+            // 2. Get fork creation date
+            Instant forkCreationDate = Instant.parse(parentInfo[1]);
+
+            // 3. Rough prefilter: commits since creation
+            JSONArray commits = getJson("https://api.github.com/repos/" + repository + "/commits?since=" + forkCreationDate.toString()).getJSONArray("data");
+            if (commits.length() < 5) return false;
+
+            // 4. Accurate fork-specific check with /compare/
+            String compareUrl = "https://api.github.com/repos/" + repository + "/compare/" + parentRepo + ":" + parentDefaultBranch + "..." + forkDefaultBranch;
+            JSONObject compareJson = getJson(compareUrl).getJSONObject("data");
+            int aheadBy = compareJson.getInt("ahead_by");
+
+            return aheadBy >= 5;
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean hasAtLeast30DaysEvolution(String repository) {
+        try {
+            String commitsUrl = "https://api.github.com/repos/" + repository + "/commits";
+            JSONObject response = getJson(commitsUrl);
+            JSONArray commits = response.getJSONArray("data");
+
+            if (commits.length() < 2) return false;
+
+            Instant first = Instant.parse(commits.getJSONObject(commits.length() - 1).getJSONObject("commit").getJSONObject("committer").getString("date"));
+            Instant last = Instant.parse(commits.getJSONObject(0).getJSONObject("commit").getJSONObject("committer").getString("date"));
+
+            return Duration.between(first, last).toDays() >= 30;
+
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private boolean wasDiscontinuedAfterMerge(String repository) {
+        try {
+            String commitsUrl = "https://api.github.com/repos/" + repository + "/commits";
+            JSONObject response = getJson(commitsUrl);
+            JSONArray commits = response.getJSONArray("data");
+
+            if (commits.isEmpty()) return false;
+
+            // Get the latest commit
+            JSONObject latest = commits.getJSONObject(0);
+            String sha = latest.getString("sha");
+
+            // Get full commit details to inspect parent count
+            JSONObject commitJson = getJson("https://api.github.com/repos/" + repository + "/commits/" + sha).getJSONObject("data");
+            JSONArray parents = commitJson.getJSONArray("parents");
+
+            return parents.length() > 1;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
