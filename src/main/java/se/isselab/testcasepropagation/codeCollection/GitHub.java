@@ -449,15 +449,20 @@ public class GitHub {
 
             if (commits.isEmpty()) return false;
 
-            // Get the latest commit
-            JSONObject latest = commits.getJSONObject(0);
-            String sha = latest.getString("sha");
+            JSONObject commit = commits.getJSONObject(0);
+            boolean isMerge = commit.getJSONArray("parents").length() > 1;
+            if (!isMerge) return false;
 
-            // Get full commit details to inspect parent count
-            JSONObject commitJson = getJson("https://api.github.com/repos/" + repository + "/commits/" + sha).getJSONObject("data");
-            JSONArray parents = commitJson.getJSONArray("parents");
+            String commitDateStr = commit
+                    .getJSONObject("commit")
+                    .getJSONObject("committer")
+                    .getString("date");
 
-            return parents.length() > 1;
+            Instant lastCommitTime = Instant.parse(commitDateStr);
+            long daysSinceLastCommit = Duration.between(lastCommitTime, Instant.now()).toDays();
+
+            return daysSinceLastCommit > 180;
+
         } catch (Exception e) {
             return false;
         }
