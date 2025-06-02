@@ -61,16 +61,24 @@ public class Pipeline {
         }
 
         // TODO: Implement simple UI test
+        System.out.println("\nIMPLEMENTATION OF INTEREST\n");
         List<String> availableForks = Arrays.asList("one/fork1", "one/fork3", "twelve/fork22", "hundred/fork9");
+        System.out.println("Available forks: " + availableForks);
         List<String> selectedForks;
         ForkSelectionDialog dialog = new ForkSelectionDialog(availableForks);
         if (dialog.showAndGet()) {
             selectedForks = dialog.getSelectedForks();
             TestCasePropagationSettings.getInstance().setSelectedForks(selectedForks);
+            System.out.println("Selected forks from UI: " + selectedForks);
         } else {
             selectedForks = TestCasePropagationSettings.getInstance().getSelectedForks();
-            if (selectedForks.isEmpty()) selectedForks = availableForks;
+            System.out.println("Selected forks from settings: " + selectedForks);
+            if (selectedForks.isEmpty()) {
+                selectedForks = availableForks;
+                System.out.println("Just using available forks: " + selectedForks);
+            }
         }
+        System.out.println("\nPIPELINE CONTINUES\n");
 
         FileFinder fileFinder = new FileFinder();
         int testFileCounter = 0;
