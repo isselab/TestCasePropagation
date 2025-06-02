@@ -33,7 +33,6 @@ public class TestCasePropagationSettings implements PersistentStateComponent<Tes
 
     public static class State {
         public String githubApiKey = "";
-        public List<String> selectedForks = new ArrayList<>();
     }
 
     private State myState = new State();
@@ -59,13 +58,5 @@ public class TestCasePropagationSettings implements PersistentStateComponent<Tes
 
     public void setGithubApiKey(String githubApiKey) {
         myState.githubApiKey = githubApiKey;
-    }
-
-    public List<String> getSelectedForks() {
-        return myState.selectedForks;
-    }
-
-    public void setSelectedForks(List<String> selectedForks) {
-        myState.selectedForks = new ArrayList<>(selectedForks);
     }
 }

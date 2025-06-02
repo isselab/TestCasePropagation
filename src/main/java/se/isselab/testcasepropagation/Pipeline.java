@@ -32,6 +32,7 @@ import se.isselab.testcasepropagation.helper.PropagationElement;
 import se.isselab.testcasepropagation.intelliJ.FileFinder;
 import se.isselab.testcasepropagation.intelliJ.FileHandler;
 import se.isselab.testcasepropagation.intelliJ.ForkSelectionDialog;
+import se.isselab.testcasepropagation.intelliJ.settings.ProjectSettings;
 import se.isselab.testcasepropagation.intelliJ.settings.SettingsViewFactory;
 import se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings;
 import se.isselab.testcasepropagation.intelliJ.visualize.CodeDifferenceViewer;
@@ -72,10 +73,10 @@ public class Pipeline {
             ForkSelectionDialog dialog = new ForkSelectionDialog(availableForks);
             if (dialog.showAndGet()) {
                 selectedForksWrapper[0] = dialog.getSelectedForks();
-                TestCasePropagationSettings.getInstance().setSelectedForks(selectedForksWrapper[0]);
+                ProjectSettings.getInstance(project).setSelectedForks(selectedForksWrapper[0]);
                 System.out.println("Selected forks from UI: " + selectedForksWrapper[0]);
             } else {
-                selectedForksWrapper[0] = TestCasePropagationSettings.getInstance().getSelectedForks();
+                selectedForksWrapper[0] = ProjectSettings.getInstance(project).getSelectedForks();
                 System.out.println("Selected forks from settings: " + selectedForksWrapper[0]);
                 if (selectedForksWrapper[0].isEmpty()) {
                     selectedForksWrapper[0] = availableForks;
