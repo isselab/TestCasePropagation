@@ -22,6 +22,9 @@ import com.intellij.openapi.components.Storage;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @State(
         name = "se.isselab.testcasepropagation.MyPluginSettings",
         storages = {@Storage("MyPluginSettings.xml")}
@@ -30,6 +33,7 @@ public class TestCasePropagationSettings implements PersistentStateComponent<Tes
 
     public static class State {
         public String githubApiKey = "";
+        public List<String> selectedForks = new ArrayList<>();
     }
 
     private State myState = new State();
@@ -55,5 +59,13 @@ public class TestCasePropagationSettings implements PersistentStateComponent<Tes
 
     public void setGithubApiKey(String githubApiKey) {
         myState.githubApiKey = githubApiKey;
+    }
+
+    public List<String> getSelectedForks() {
+        return myState.selectedForks;
+    }
+
+    public void setSelectedForks(List<String> selectedForks) {
+        myState.selectedForks = new ArrayList<>(selectedForks);
     }
 }

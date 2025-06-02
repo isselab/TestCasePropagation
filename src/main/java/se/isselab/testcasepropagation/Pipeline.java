@@ -66,8 +66,10 @@ public class Pipeline {
         ForkSelectionDialog dialog = new ForkSelectionDialog(availableForks);
         if (dialog.showAndGet()) {
             selectedForks = dialog.getSelectedForks();
+            TestCasePropagationSettings.getInstance().setSelectedForks(selectedForks);
         } else {
-            selectedForks = availableForks;
+            selectedForks = TestCasePropagationSettings.getInstance().getSelectedForks();
+            if (selectedForks.isEmpty()) selectedForks = availableForks;
         }
 
         FileFinder fileFinder = new FileFinder();
