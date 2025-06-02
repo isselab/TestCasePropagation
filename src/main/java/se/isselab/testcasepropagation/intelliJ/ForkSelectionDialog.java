@@ -6,20 +6,20 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
 
 public class ForkSelectionDialog extends DialogWrapper {
     private final List<String> forks;
+    private final Set<String> preSelectedForks;
     private final Map<String, JCheckBox> checkBoxMap = new LinkedHashMap<>();
     private JCheckBox selectAllBox;
     private JPanel panel;
 
-    public ForkSelectionDialog(List<String> forks) {
+    public ForkSelectionDialog(List<String> forks, List<String> preSelectedForks) {
         super(true);
         this.forks = forks;
+        this.preSelectedForks = new HashSet<>(preSelectedForks);
         setTitle("Select Forks");
         init();
     }
@@ -43,6 +43,7 @@ public class ForkSelectionDialog extends DialogWrapper {
 
         for (String fork : forks) {
             JCheckBox checkBox = new JCheckBox(fork);
+            checkBox.setSelected(preSelectedForks.contains(fork));
             checkBoxMap.put(fork, checkBox);
             checkBoxPanel.add(checkBox);
         }

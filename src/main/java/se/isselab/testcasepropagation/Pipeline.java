@@ -22,6 +22,7 @@ import se.isselab.testcasepropagation.codeCollection.GitHub;
 
 import java.io.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
@@ -70,18 +71,36 @@ public class Pipeline {
         final List<String>[] selectedForksWrapper = new List[1];
 
         ApplicationManager.getApplication().invokeAndWait(() -> {
-            ForkSelectionDialog dialog = new ForkSelectionDialog(availableForks);
+            List<String> savedForks = ProjectSettings.getInstance(project).getSelectedForks();
+
+            ForkSelectionDialog dialog = new ForkSelectionDialog(availableForks, savedForks);
             if (dialog.showAndGet()) {
                 selectedForksWrapper[0] = dialog.getSelectedForks();
                 ProjectSettings.getInstance(project).setSelectedForks(selectedForksWrapper[0]);
                 System.out.println("Selected forks from UI: " + selectedForksWrapper[0]);
             } else {
-                selectedForksWrapper[0] = ProjectSettings.getInstance(project).getSelectedForks();
-                System.out.println("Selected forks from settings: " + selectedForksWrapper[0]);
+                // selectedForksWrapper[0] = ProjectSettings.getInstance(project).getSelectedForks();
+                // System.out.println("Selected forks from settings: " + selectedForksWrapper[0]);
+
+                if (savedForks.isEmpty()) {
+                    selectedForksWrapper[0] = availableForks;
+                } else {
+                    selectedForksWrapper[0] = savedForks.stream()
+                            .filter(availableForks::contains)
+                            .collect(Collectors.toList());
+                }
+
+
+
+                // selectedForksWrapper[0] = savedForks.isEmpty() ? availableForks : savedForks;
+                System.out.println("Selected forks with savedForks.isEmpty()=" + savedForks.isEmpty() + ": " + selectedForksWrapper[0]);
+                /*
                 if (selectedForksWrapper[0].isEmpty()) {
                     selectedForksWrapper[0] = availableForks;
                     System.out.println("Just using available forks: " + selectedForksWrapper[0]);
                 }
+
+                 */
             }
         });
 
