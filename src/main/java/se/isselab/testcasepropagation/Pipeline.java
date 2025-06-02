@@ -30,6 +30,7 @@ import se.isselab.testcasepropagation.codeDuplication.TestedFunctionExtractor;
 import se.isselab.testcasepropagation.helper.PropagationElement;
 import se.isselab.testcasepropagation.intelliJ.FileFinder;
 import se.isselab.testcasepropagation.intelliJ.FileHandler;
+import se.isselab.testcasepropagation.intelliJ.ForkSelectionDialog;
 import se.isselab.testcasepropagation.intelliJ.settings.SettingsViewFactory;
 import se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings;
 import se.isselab.testcasepropagation.intelliJ.visualize.CodeDifferenceViewer;
@@ -59,6 +60,16 @@ public class Pipeline {
             settingsViewFactory.enableFetchButton(false);
         }
 
+        // TODO: Implement simple UI test
+        List<String> availableForks = Arrays.asList("one/fork1", "one/fork3", "twelve/fork22", "hundred/fork9");
+        List<String> selectedForks;
+        ForkSelectionDialog dialog = new ForkSelectionDialog(availableForks);
+        if (dialog.showAndGet()) {
+            selectedForks = dialog.getSelectedForks();
+        } else {
+            selectedForks = availableForks;
+        }
+
         FileFinder fileFinder = new FileFinder();
         int testFileCounter = 0;
         int testFunctionCounter = 0;
@@ -79,6 +90,8 @@ public class Pipeline {
         if (settingsViewFactory != null) {
             settingsViewFactory.updateForkLabel(forks.size());
         }
+
+        // TODO: Move UI implementation here
 
         for(String[] fork : forks){
             // Step 2: Get all file paths in the fork
