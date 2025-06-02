@@ -54,7 +54,6 @@ public class SettingsViewFactory implements ToolWindowFactory {
 
     public SettingsViewFactory() {
         instance = this;
-        pipeline = new Pipeline();
     }
 
     public static SettingsViewFactory getInstance() {
@@ -64,6 +63,7 @@ public class SettingsViewFactory implements ToolWindowFactory {
     @Override
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
         currentProject = project;
+        pipeline = new Pipeline(currentProject);
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 

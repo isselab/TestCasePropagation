@@ -44,10 +44,10 @@ public class Pipeline {
     private CodeDifferenceViewer codeDifferenceViewer;
 
 
-    public Pipeline(){
+    public Pipeline(Project project) {
         TestCasePropagationSettings settings = TestCasePropagationSettings.getInstance();
         gh = new GitHub(settings.getGithubApiKey());
-        project = ProjectManager.getInstance().getOpenProjects()[0];
+        this.project = project;
         propagationQueue = new ArrayList<PropagationElement>();
         codeDifferenceViewer = new CodeDifferenceViewer(this);
     }
