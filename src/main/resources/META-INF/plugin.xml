@@ -36,6 +36,11 @@ limitations under the License.
         <applicationService serviceInterface="se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings" serviceImplementation="se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings"/>
         <projectConfigurable instance="se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettingsConfigurable" id="my.plugin.settings" displayName="Test Case Propagation Settings"/>
     </extensions>
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService
+                serviceInterface="se.isselab.testcasepropagation.intelliJ.settings.ProjectSettings"
+                serviceImplementation="se.isselab.testcasepropagation.intelliJ.settings.ProjectSettings"/>
+    </extensions>
 
     <extensionPoints>
 
