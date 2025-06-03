@@ -48,7 +48,7 @@ public class ForkSelectionDialog extends DialogWrapper {
             checkBoxPanel.add(checkBox);
         }
 
-        panel.add(checkBoxPanel, BorderLayout.CENTER);
+        panel.add(new JScrollPane(checkBoxPanel), BorderLayout.CENTER);
         return panel;
     }
 

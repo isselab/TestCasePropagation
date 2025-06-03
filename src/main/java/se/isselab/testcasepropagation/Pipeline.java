@@ -17,7 +17,9 @@ limitations under the License.
 package se.isselab.testcasepropagation;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.VirtualFile;
+import org.jetbrains.annotations.Nullable;
 import se.isselab.testcasepropagation.codeCollection.GitHub;
 
 import java.io.*;
@@ -37,6 +39,8 @@ import se.isselab.testcasepropagation.intelliJ.settings.ProjectSettings;
 import se.isselab.testcasepropagation.intelliJ.settings.SettingsViewFactory;
 import se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings;
 import se.isselab.testcasepropagation.intelliJ.visualize.CodeDifferenceViewer;
+
+import javax.swing.*;
 
 public class Pipeline {
     private final GitHub gh;
@@ -66,46 +70,17 @@ public class Pipeline {
         // TODO: Implement simple UI test
         System.out.println("\nIMPLEMENTATION OF INTEREST\n");
 
-        List<String> availableForks = Arrays.asList("one/fork1", "one/fork3", "twelve/fork22", "hundred/fork9");
+        List<String> availableForks = Arrays.asList("one/fork1", "one/fork3", "twelve/fork22", "hundred/fork9", "one/fork10", "one/fork30", "twelve/fork220", "hundred/fork90", "one/fork100", "one/fork300", "twelve/fork2200", "hundred/fork900", "one/fork1000", "one/fork3000", "twelve/fork22000", "hundred/fork9000", "one/fork10000", "one/fork30000", "twelve/fork220000", "hundred/fork90000" );
         System.out.println("Available forks: " + availableForks);
-        final List<String>[] selectedForksWrapper = new List[1];
 
-        ApplicationManager.getApplication().invokeAndWait(() -> {
-            List<String> savedForks = ProjectSettings.getInstance(project).getSelectedForks();
-
-            ForkSelectionDialog dialog = new ForkSelectionDialog(availableForks, savedForks);
-            if (dialog.showAndGet()) {
-                selectedForksWrapper[0] = dialog.getSelectedForks();
-                ProjectSettings.getInstance(project).setSelectedForks(selectedForksWrapper[0]);
-                System.out.println("Selected forks from UI: " + selectedForksWrapper[0]);
-            } else {
-                // selectedForksWrapper[0] = ProjectSettings.getInstance(project).getSelectedForks();
-                // System.out.println("Selected forks from settings: " + selectedForksWrapper[0]);
-
-                if (savedForks.isEmpty()) {
-                    selectedForksWrapper[0] = availableForks;
-                    ProjectSettings.getInstance(project).setSelectedForks(selectedForksWrapper[0]);
-                } else {
-                    selectedForksWrapper[0] = savedForks.stream()
-                            .filter(availableForks::contains)
-                            .collect(Collectors.toList());
-                }
-
-
-
-                // selectedForksWrapper[0] = savedForks.isEmpty() ? availableForks : savedForks;
-                System.out.println("Selected forks with savedForks.isEmpty()=" + savedForks.isEmpty() + ": " + selectedForksWrapper[0]);
-                /*
-                if (selectedForksWrapper[0].isEmpty()) {
-                    selectedForksWrapper[0] = availableForks;
-                    System.out.println("Just using available forks: " + selectedForksWrapper[0]);
-                }
-
-                 */
+        List<String> selectedForks = selectForksDialog(availableForks);
+        if (selectedForks == null) System.out.println("selectedForks == null");
+        if (selectedForks == null) {
+            if (settingsViewFactory != null) {
+                settingsViewFactory.enableFetchButton(true);
             }
-        });
-
-        List<String> selectedForks = selectedForksWrapper[0];
+            return; // user canceled
+        }
 
         System.out.println("\nPIPELINE CONTINUES\n");
 
@@ -276,5 +251,55 @@ public class Pipeline {
         VirtualFile testedFile = fileFinder.findTestFileRecursively(usedClass);
         PropagationElement propagationElement = new PropagationElement(testedFile, testFunction, testedClass);
         propagationQueue.add(propagationElement);
+    }
+
+    @Nullable
+    private List<String> selectForksDialog(List<String> availableForks) {
+        final List<String>[] selectedForksWrapper = new List[1];
+        final boolean[] canceledWrapper = new boolean[] {false};
+
+        ApplicationManager.getApplication().invokeAndWait(() -> {
+            List<String> savedForks = ProjectSettings.getInstance(project).getSelectedForks();
+
+            while (true) {
+                ForkSelectionDialog dialog = new ForkSelectionDialog(availableForks, savedForks);
+                if (dialog.showAndGet()) {
+                    selectedForksWrapper[0] = dialog.getSelectedForks();
+
+                    if (selectedForksWrapper[0].isEmpty()) {
+                        int result = Messages.showYesNoDialog(
+                                project,
+                                "No forks selected. Pipeline will cancel.",
+                                "Cancel Pipeline?",
+                                Messages.getQuestionIcon()
+                        );
+                        if (result == Messages.YES) {
+                            canceledWrapper[0] = true;
+                            return;
+                        }
+                        // else: retry
+                    } else {
+                        ProjectSettings.getInstance(project).setSelectedForks(selectedForksWrapper[0]);
+                        System.out.println("Selected forks from UI: " + selectedForksWrapper[0]);
+                        return;
+                    }
+                } else {
+                    int result = Messages.showYesNoDialog(
+                            project,
+                            "Fork selection canceled. Pipeline will also cancel.",
+                            "Cancel Pipeline?",
+                            Messages.getQuestionIcon()
+                    );
+                    if (result == Messages.YES) {
+                        canceledWrapper[0] = true;
+                        return;
+                    }
+                    // else: retry
+                }
+            }
+        });
+
+        if (canceledWrapper[0]) return null;
+        return selectedForksWrapper[0];
     }
 }
