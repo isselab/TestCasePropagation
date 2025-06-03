@@ -84,6 +84,7 @@ public class Pipeline {
 
                 if (savedForks.isEmpty()) {
                     selectedForksWrapper[0] = availableForks;
+                    ProjectSettings.getInstance(project).setSelectedForks(selectedForksWrapper[0]);
                 } else {
                     selectedForksWrapper[0] = savedForks.stream()
                             .filter(availableForks::contains)
