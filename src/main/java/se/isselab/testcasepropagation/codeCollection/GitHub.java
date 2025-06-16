@@ -40,31 +40,6 @@ public class GitHub {
     public GitHub(String accessToken){
         this.accessToken = accessToken;
     }
-    public @NotNull List<String[]> fetchForks(String repository) {
-        String repoUrl = "https://api.github.com/repos/" + repository +"/forks";
-
-        List<String[]> forksList = new ArrayList<>();
-
-        try {
-            JSONArray forksArray = getPaginatedJsonArray(repoUrl);
-
-            // Process each fork
-            for (int i = 0; i < forksArray.length(); i++) {
-                JSONObject fork = forksArray.getJSONObject(i);
-                String[] forkData = new String[2];
-                forkData[0] = fork.getString("full_name");
-                forkData[1] = fork.getString("pushed_at");
-                forksList.add(forkData);
-                // You can further process the fork information here
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            // Handle exceptions appropriately
-            throw new RuntimeException(e);
-        }
-        return forksList;
-    }
 
     public List<String> fetchAllFilePaths(String fork) {
         List<String> filePaths = new ArrayList<>();
@@ -154,29 +129,6 @@ public class GitHub {
             // Handle exceptions appropriately
         }
         return "";
-    }
-
-    public String[] fetchForkedOff(String repository) {
-        // Construct the API URL for fetching repository information
-        String apiUrl = "https://api.github.com/repos/" + repository;
-
-        try {
-            JSONObject jsonResponse = getJsonObject(apiUrl);
-
-            // Check if the repository was forked from another repository
-            if (jsonResponse.has("parent")) {
-                JSONObject parentRepo = jsonResponse.getJSONObject("parent");
-                String fullName = parentRepo.getString("full_name");
-                String forkTime = jsonResponse.getString("pushed_at"); // Time the current repository (fork) was created
-                return new String[] { fullName, forkTime };
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            // Handle exceptions appropriately
-        }
-
-        return null; // If not forked from another repository
     }
 
 
