@@ -227,35 +227,30 @@ public class GitHub {
         return null; // If not forked from another repository
     }
 
-    public Set<String> findModifiedFilesAfterCreation(String owner, String repo) throws IOException {
+    public Set<String> findModifiedFilesAfterCreation(String owner, String repo) throws IOException, InterruptedException {
         Instant creationDate = getRepoCreationDate(owner, repo);
 
         Set<String> modifiedFiles = new HashSet<>();
         String commitsUrl = "https://api.github.com/repos/" + owner + "/" + repo + "/commits?since=" + creationDate.toString();
 
-        while (commitsUrl != null) {
-            JSONObject response = getJson(commitsUrl);
-            JSONArray commits = response.getJSONArray("data");
+        JSONArray commits = getPaginatedJsonArray(commitsUrl);
 
-            for (int i = 0; i < commits.length(); i++) {
-                JSONObject commit = commits.getJSONObject(i);
-                String sha = commit.getString("sha");
-                modifiedFiles.addAll(getFilesInCommit(owner, repo, sha));
-            }
-
-            commitsUrl = response.optString("nextLink", null);
+        for (int i = 0; i < commits.length(); i++) {
+            JSONObject commit = commits.getJSONObject(i);
+            String sha = commit.getString("sha");
+            modifiedFiles.addAll(getFilesInCommit(owner, repo, sha));
         }
 
         return modifiedFiles;
     }
 
-    private Instant getRepoCreationDate(String owner, String repo) throws IOException {
-        JSONObject repoJson = getJson("https://api.github.com/repos/" + owner + "/" + repo).getJSONObject("data");
+    private Instant getRepoCreationDate(String owner, String repo) throws IOException, InterruptedException {
+        JSONObject repoJson = getJsonObject("https://api.github.com/repos/" + owner + "/" + repo);
         return Instant.parse(repoJson.getString("created_at"));
     }
 
-    private Set<String> getFilesInCommit(String owner, String repo, String sha) throws IOException {
-        JSONObject commitJson = getJson("https://api.github.com/repos/" + owner + "/" + repo + "/commits/" + sha).getJSONObject("data");
+    private Set<String> getFilesInCommit(String owner, String repo, String sha) throws IOException, InterruptedException {
+        JSONObject commitJson = getJsonObject("https://api.github.com/repos/" + owner + "/" + repo + "/commits/" + sha);
         Set<String> files = new HashSet<>();
         JSONArray fileArray = commitJson.getJSONArray("files");
 
@@ -313,21 +308,22 @@ public class GitHub {
         List<JSONObject> qualifiedForks = new ArrayList<>();
         for (String repo : candidateForks) {
             try {
-                JSONObject repoJson = getJson("https://api.github.com/repos/" + repo).getJSONObject("data");
+                JSONObject repoJson = getJsonObject("https://api.github.com/repos/" + repo);
 
                 // ASE paper checks
                 String forkDefaultBranch = repoJson.getString("default_branch");
                 if (repoJson.has("parent")) {
                     String parentRepo = repoJson.getJSONObject("parent").getString("full_name");
-                    String parentDefaultBranch = getJson("https://api.github.com/repos/" + parentRepo).getJSONObject("data").getString("default_branch");
+                    String parentDefaultBranch = getJsonObject("https://api.github.com/repos/" + parentRepo).getString("default_branch");
+
                     if (!hasAtLeast5ForkSpecificCommits(repo, parentDefaultBranch, forkDefaultBranch)) continue;
                     if (!hasAtLeast30DaysEvolution(repo, parentDefaultBranch, forkDefaultBranch)) continue;
                 }
                 if (wasDiscontinuedAfterMerge(repo)) continue;
 
                 // Collect metadata
-                JSONArray commits = getJson("https://api.github.com/repos/" + repo + "/commits").getJSONArray("data");
-                int contributorsCount = getJson("https://api.github.com/repos/" + repo + "/contributors").getJSONArray("data").length();
+                JSONArray commits = getPaginatedJsonArray("https://api.github.com/repos/" + repo + "/commits");
+                int contributorsCount = getPaginatedJsonArray("https://api.github.com/repos/" + repo + "/contributors").length();
 
                 repoJson.put("commits", commits.length());
                 repoJson.put("contributors", contributorsCount);
@@ -390,12 +386,12 @@ public class GitHub {
             Instant forkCreationDate = Instant.parse(parentInfo[1]);
 
             // 3. Rough prefilter: commits since creation
-            JSONArray commits = getJson("https://api.github.com/repos/" + repository + "/commits?since=" + forkCreationDate.toString()).getJSONArray("data");
+            JSONArray commits = getPaginatedJsonArray("https://api.github.com/repos/" + repository + "/commits?since=" + forkCreationDate.toString());
             if (commits.length() < 5) return false;
 
             // 4. Accurate fork-specific check with /compare/
             String compareUrl = "https://api.github.com/repos/" + parentRepo + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch;
-            JSONObject compareJson = getJson(compareUrl).getJSONObject("data");
+            JSONObject compareJson = getJsonObject(compareUrl);
             int aheadBy = compareJson.getInt("ahead_by");
 
             return aheadBy >= 5;
@@ -405,11 +401,11 @@ public class GitHub {
         }
     }
 
-    private boolean hasAtLeast30DaysEvolution(String repository, String parentDefaultBranch, String forkDefaultBranch) {
+    private boolean hasAtLeast30DaysEvolution(String repository, String parentDefaultBranch, String forkDefaultBranch) throws InterruptedException {
         try {
             String[] parentInfo = fetchForkedOff(repository);
             if (parentInfo == null) {
-                JSONArray commits = getJson("https://api.github.com/repos/" + repository + "/commits").getJSONArray("data"); // ToDo: pagination still missing!
+                JSONArray commits = getPaginatedJsonArray("https://api.github.com/repos/" + repository + "/commits");
                 if (commits.length() < 2) return false;
 
                 Instant first = Instant.parse(commits.getJSONObject(commits.length() - 1).getJSONObject("commit").getJSONObject("committer").getString("date"));
@@ -422,7 +418,7 @@ public class GitHub {
 
                 // Compare parent...fork to get only fork-specific commits
                 String compareUrl = "https://api.github.com/repos/" + parentRepo + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch;
-                JSONObject compareJson = getJson(compareUrl).getJSONObject("data");
+                JSONObject compareJson = getJsonObject(compareUrl);
 
                 if (!compareJson.has("commits")) return false;
                 JSONArray forkCommits = compareJson.getJSONArray("commits");
@@ -453,8 +449,7 @@ public class GitHub {
     private boolean wasDiscontinuedAfterMerge(String repository) {
         try {
             String commitsUrl = "https://api.github.com/repos/" + repository + "/commits";
-            JSONObject response = getJson(commitsUrl);
-            JSONArray commits = response.getJSONArray("data");
+            JSONArray commits = getJsonArray(commitsUrl);
 
             if (commits.isEmpty()) return false;
 
