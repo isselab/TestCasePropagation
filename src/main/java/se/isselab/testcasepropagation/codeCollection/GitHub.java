@@ -226,7 +226,13 @@ public class GitHub {
 
     public List<String> fetchForkSelection(String repository) {
         // Step 1: Fetch all forks (parent, siblings, children)
-        Set<String> candidateForks = fetchAllForks(repository);
+        Set<String> candidateForks = null;
+        try {
+            candidateForks = fetchAllForks(repository);
+        } catch (Exception e) {
+            System.err.println("Failed to fetch forks: " + e);
+            throw new RuntimeException(e);
+        }
 
         // Step 2: Filter and collect metadata
         List<JSONObject> qualifiedForks = new ArrayList<>();
@@ -240,8 +246,8 @@ public class GitHub {
                     String parentRepo = repoJson.getJSONObject("parent").getString("full_name");
                     String parentDefaultBranch = getJsonObject("https://api.github.com/repos/" + parentRepo).getString("default_branch");
 
-                    if (!hasAtLeast5ForkSpecificCommits(repo, parentDefaultBranch, forkDefaultBranch)) continue;
-                    if (!hasAtLeast30DaysEvolution(repo, parentDefaultBranch, forkDefaultBranch)) continue;
+                    if (!hasAtLeast5ForkSpecificCommits(repoJson, parentDefaultBranch, forkDefaultBranch)) continue;
+                    if (!hasAtLeast30DaysEvolution(repoJson, parentDefaultBranch, forkDefaultBranch)) continue;
                 }
                 if (wasDiscontinuedAfterMerge(repo)) continue;
 
@@ -274,47 +280,46 @@ public class GitHub {
         return qualifiedForks.stream().limit(100).map(f -> f.getString("full_name")).toList();
     }
 
-    private Set<String> fetchAllForks(String repository) {
+    public Set<String> fetchAllForks(String repository) throws IOException, InterruptedException {
         Set<String> forks = new HashSet<>();
 
         // Step 1: Find the parent
-        String[] parentInfo = fetchForkedOff(repository);
-        if (parentInfo != null) {
-            String parentRepo = parentInfo[0];
-            forks.add(parentRepo);
+        JSONObject repo = getJsonObject("https://api.github.com/repos/" + repository);
+        if (repo != null && repo.has("parent")) {
+            String parentFullName = repo.getJSONObject("parent").getString("full_name");
+            forks.add(parentFullName);
 
             // Step 2: Add siblings
-            for (String[] fork : fetchForks(parentRepo)) {
-                forks.add(fork[0]);
+            for (Object fork : getPaginatedJsonArray("https://api.github.com/repos/" + parentFullName + "/forks")) {
+                forks.add(((JSONObject) fork).getString("full_name"));
             }
             forks.remove(repository);
         }
 
         // Step 3: Add children
-        for (String[] fork : fetchForks(repository)){
-            forks.add(fork[0]);
+        for (Object fork : getPaginatedJsonArray("https://api.github.com/repos/" + repository + "/forks")) {
+            forks.add(((JSONObject) fork).getString("full_name"));
         }
+
         return forks;
     }
 
-    private boolean hasAtLeast5ForkSpecificCommits(String repository, String parentDefaultBranch, String forkDefaultBranch) {
+    private boolean hasAtLeast5ForkSpecificCommits(JSONObject repository, String parentDefaultBranch, String forkDefaultBranch) {
         try {
             // 1. Get parent info
-            String[] parentInfo = fetchForkedOff(repository);
-            if (parentInfo == null) return true;
+            String parentFullName = repository.getJSONObject("parent").getString("full_name");
 
-            String parentRepo = parentInfo[0];
-            String forkOwner = repository.split("/")[0];
+            String forkOwner = repository.getJSONObject("owner").getString("login");
 
             // 2. Get fork creation date
-            Instant forkCreationDate = Instant.parse(parentInfo[1]);
+            Instant forkCreationDate = Instant.parse(repository.getString("created_at"));
 
             // 3. Rough prefilter: commits since creation
             JSONArray commits = getPaginatedJsonArray("https://api.github.com/repos/" + repository + "/commits?since=" + forkCreationDate.toString());
             if (commits.length() < 5) return false;
 
             // 4. Accurate fork-specific check with /compare/
-            String compareUrl = "https://api.github.com/repos/" + parentRepo + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch;
+            String compareUrl = "https://api.github.com/repos/" + parentFullName + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch;
             JSONObject compareJson = getJsonObject(compareUrl);
             int aheadBy = compareJson.getInt("ahead_by");
 
@@ -325,10 +330,10 @@ public class GitHub {
         }
     }
 
-    private boolean hasAtLeast30DaysEvolution(String repository, String parentDefaultBranch, String forkDefaultBranch) throws InterruptedException {
+    private boolean hasAtLeast30DaysEvolution(JSONObject repository, String parentDefaultBranch, String forkDefaultBranch) throws InterruptedException {
         try {
-            String[] parentInfo = fetchForkedOff(repository);
-            if (parentInfo == null) {
+            String parentFullName = repository.getJSONObject("parent").getString("full_name");
+            if (parentFullName == null) {
                 JSONArray commits = getPaginatedJsonArray("https://api.github.com/repos/" + repository + "/commits");
                 if (commits.length() < 2) return false;
 
@@ -337,11 +342,10 @@ public class GitHub {
 
                 return Duration.between(first, last).toDays() >= 30;
             } else {
-                String parentRepo = parentInfo[0];
-                String forkOwner = repository.split("/")[0];
+                String forkOwner = repository.getJSONObject("owner").getString("login");
 
                 // Compare parent...fork to get only fork-specific commits
-                String compareUrl = "https://api.github.com/repos/" + parentRepo + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch;
+                String compareUrl = "https://api.github.com/repos/" + parentFullName + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch;
                 JSONObject compareJson = getJsonObject(compareUrl);
 
                 if (!compareJson.has("commits")) return false;

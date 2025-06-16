@@ -91,6 +91,8 @@ public class Pipeline {
 
 
         // Step 1: Fetch all forks
+
+        /*
         List<String[]> parentForks = null;
         List<String[]> forks = gh.fetchForks(repository);
         String parent[] = gh.fetchForkedOff(repository);
@@ -101,21 +103,31 @@ public class Pipeline {
         if(parentForks != null) {
             forks.addAll(parentForks);
         }
-        if (settingsViewFactory != null) {
+
+         */
+        Set<String> forks = null;
+        try {
+            forks = gh.fetchAllForks(repository);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        if (settingsViewFactory != null && forks != null) {
             settingsViewFactory.updateForkLabel(forks.size());
         }
 
+
+
         // TODO: Move UI implementation here
 
-        for(String[] fork : forks){
+        for(String fork : forks){
             // Step 2: Get all file paths in the fork
-            List<String> filePaths = gh.fetchAllFilePaths(fork[0]);
+            List<String> filePaths = gh.fetchAllFilePaths(fork);
 
             for (String filePath : filePaths) {
                 if (filePath.endsWith(".java") && filePath.toLowerCase().contains("test")) {
                     // Step 3: Fetch content of test files
                     testFileCounter++;
-                    String testFileContent = gh.fetchFileContent(fork[0], filePath);
+                    String testFileContent = gh.fetchFileContent(fork, filePath);
 
                     // Step 4: Extract tested code
                     ClassFileFinder classFileFinder = new ClassFileFinder();
