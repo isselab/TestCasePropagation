@@ -43,58 +43,25 @@ public class GitHub {
     public @NotNull List<String[]> fetchForks(String repository) {
         String repoUrl = "https://api.github.com/repos/" + repository +"/forks";
 
-        // Create HttpClient instance
-        HttpClient httpClient = HttpClients.createDefault();
-
         List<String[]> forksList = new ArrayList<>();
 
         try {
-            int page = 1;
-            while (true) {
-                // Prepare request with pagination
-                HttpGet request = new HttpGet(repoUrl + "?page=" + page);
-                request.addHeader("Authorization", "Bearer " + accessToken);
-                request.addHeader("Accept", "application/vnd.github.v3+json");
+            JSONArray forksArray = getPaginatedJsonArray(repoUrl);
 
-                // Execute request
-                HttpResponse response = httpClient.execute(request);
-
-                // Check for successful response
-                if (response.getStatusLine().getStatusCode() != 200) {
-                    System.err.println("Failed to fetch forks: " + response.getStatusLine());
-                    break;
-                }
-
-                // Get response entity
-                HttpEntity entity = response.getEntity();
-                String responseBody = EntityUtils.toString(entity);
-
-                // Parse JSON response
-                JSONArray forksArray = new JSONArray(responseBody);
-
-                // Break if no more forks are available
-                if (forksArray.length() == 0) {
-                    break;
-                }
-
-                // Process each fork
-                for (int i = 0; i < forksArray.length(); i++) {
-                    JSONObject fork = forksArray.getJSONObject(i);
-                    String forkFullName = fork.getString("full_name");
-                    String pushedAt = fork.getString("pushed_at");
-                    String[] forkData = new String[2];
-                    forkData[0] = forkFullName;
-                    forkData[1] = pushedAt;
-                    forksList.add(forkData);
-                    // You can further process the fork information here
-                }
-
-                // Move to the next page
-                page++;
+            // Process each fork
+            for (int i = 0; i < forksArray.length(); i++) {
+                JSONObject fork = forksArray.getJSONObject(i);
+                String[] forkData = new String[2];
+                forkData[0] = fork.getString("full_name");
+                forkData[1] = fork.getString("pushed_at");
+                forksList.add(forkData);
+                // You can further process the fork information here
             }
-        } catch (IOException | org.json.JSONException e) {
+
+        } catch (Exception e) {
             e.printStackTrace();
             // Handle exceptions appropriately
+            throw new RuntimeException(e);
         }
         return forksList;
     }
@@ -193,22 +160,8 @@ public class GitHub {
         // Construct the API URL for fetching repository information
         String apiUrl = "https://api.github.com/repos/" + repository;
 
-        // Create HttpClient instance
-        HttpClient httpClient = HttpClients.createDefault();
-        HttpGet request = new HttpGet(apiUrl);
-        request.addHeader("Authorization", "Bearer " + accessToken);
-        request.addHeader("Accept", "application/vnd.github.v3+json");
-
         try {
-            // Execute request
-            HttpResponse response = httpClient.execute(request);
-
-            // Get response entity
-            HttpEntity entity = response.getEntity();
-            String responseBody = EntityUtils.toString(entity);
-
-            // Parse JSON response
-            JSONObject jsonResponse = new JSONObject(responseBody);
+            JSONObject jsonResponse = getJsonObject(apiUrl);
 
             // Check if the repository was forked from another repository
             if (jsonResponse.has("parent")) {
@@ -218,13 +171,17 @@ public class GitHub {
                 return new String[] { fullName, forkTime };
             }
 
-        } catch (IOException | org.json.JSONException e) {
+        } catch (Exception e) {
             e.printStackTrace();
             // Handle exceptions appropriately
         }
 
         return null; // If not forked from another repository
     }
+
+
+
+
 
     public Set<String> findModifiedFilesAfterCreation(String owner, String repo) throws IOException, InterruptedException {
         Instant creationDate = getRepoCreationDate(owner, repo);
@@ -262,6 +219,9 @@ public class GitHub {
 
         return files;
     }
+
+
+
 
 
     public List<String> fetchForkSelection(String repository) {
@@ -435,6 +395,9 @@ public class GitHub {
             return false;
         }
     }
+
+
+
 
     private HttpResponse sendGetRequest(String url) throws IOException, InterruptedException {
         HttpGet request = new HttpGet(url);
