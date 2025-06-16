@@ -15,6 +15,7 @@ limitations under the License.
 */
 package se.isselab.testcasepropagation.codeCollection;
 
+import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -34,6 +35,8 @@ import java.util.*;
 public class GitHub {
     private final String accessToken;
     private final Map<String, JSONObject> jsonCache = new HashMap<>();
+    private final Map<String, Object> cache = new HashMap<>();
+    private HttpClient client = HttpClients.createDefault();
 
     public GitHub(String accessToken){
         this.accessToken = accessToken;
@@ -269,7 +272,7 @@ public class GitHub {
     private JSONObject getJson(String url) throws IOException {
         if (jsonCache.containsKey(url)) return jsonCache.get(url);
 
-        HttpClient client = HttpClients.createDefault();
+        // HttpClient client = HttpClients.createDefault();
         HttpGet request = new HttpGet(url);
         request.addHeader("Authorization", "Bearer " + accessToken);
         request.addHeader("Accept", "application/vnd.github.v3+json");
@@ -473,4 +476,80 @@ public class GitHub {
             return false;
         }
     }
+
+    private HttpResponse sendGetRequest(String url) throws IOException, InterruptedException {
+        HttpGet request = new HttpGet(url);
+        request.addHeader("Authorization", "Bearer " + accessToken);
+        request.addHeader("Accept", "application/vnd.github.v3+json");
+        HttpResponse response = client.execute(request);
+
+        if (response.getStatusLine().getStatusCode() == 403 &&
+            response.containsHeader("X-RateLimit-Remaining") &&
+            response.getFirstHeader("X-RateLimit-Remaining").getValue().equals("0")) {
+
+            long resetTime = Long.parseLong(response.getFirstHeader("X-RateLimit-Reset").getValue());
+            long waitTime = resetTime - Instant.now().getEpochSecond() + 1;
+            if (waitTime > 0) {
+                System.out.println("Rate limited. Sleeping for " + waitTime + " seconds.");
+                Thread.sleep(waitTime * 1000);
+                return sendGetRequest(url); // retry
+            }
+        }
+        return response;
+    }
+
+    private JSONObject getJsonObject(String url) throws IOException, InterruptedException {
+        if (cache.containsKey(url)) return (JSONObject) cache.get(url);
+
+        HttpResponse response = sendGetRequest(url);
+        String body = EntityUtils.toString(response.getEntity());
+        JSONObject object = new JSONObject(body);
+
+        cache.put(url, object);
+        return object;
+    }
+
+    private JSONArray getJsonArray(String url) throws IOException, InterruptedException {
+        if (cache.containsKey(url)) return (JSONArray) cache.get(url);
+
+        HttpResponse response = sendGetRequest(url);
+        String body = EntityUtils.toString(response.getEntity());
+        JSONArray array = new JSONArray(body);
+
+        cache.put(url, array);
+        return array;
+    }
+
+    private JSONArray getPaginatedJsonArray(String baseUrl) throws IOException, InterruptedException {
+        if (cache.containsKey(baseUrl)) return (JSONArray) cache.get(baseUrl);
+
+        JSONArray all = new JSONArray();
+        String url = baseUrl;
+        while (url != null) {
+            HttpResponse response = sendGetRequest(url);
+            String body = EntityUtils.toString(response.getEntity());
+
+            JSONArray array = new JSONArray(body);
+            for (int i = 0; i < array.length(); i++) {
+                all.put(array.get(i));
+            }
+            url = getNextPageLink(response);
+        }
+
+        cache.put(baseUrl, all);
+        return all;
+    }
+
+    private String getNextPageLink(HttpResponse response) {
+        Header linkHeader = response.getFirstHeader("Link");
+        if (linkHeader == null) return null;
+
+        for (String part : linkHeader.getValue().split(",")) {
+            if (part.contains("rel=\"next\"")) {
+                return part.substring(part.indexOf("<") + 1, part.indexOf(">"));
+            }
+        }
+        return null;
+    }
+
 }
