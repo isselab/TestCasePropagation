@@ -34,7 +34,6 @@ import java.util.*;
 
 public class GitHub {
     private final String accessToken;
-    private final Map<String, JSONObject> jsonCache = new HashMap<>();
     private final Map<String, Object> cache = new HashMap<>();
     private HttpClient client = HttpClients.createDefault();
 
@@ -264,41 +263,6 @@ public class GitHub {
         return files;
     }
 
-    private JSONObject getJson(String url) throws IOException {
-        if (jsonCache.containsKey(url)) return jsonCache.get(url);
-
-        // HttpClient client = HttpClients.createDefault();
-        HttpGet request = new HttpGet(url);
-        request.addHeader("Authorization", "Bearer " + accessToken);
-        request.addHeader("Accept", "application/vnd.github.v3+json");
-
-        HttpResponse response = client.execute(request);
-        HttpEntity entity = response.getEntity();
-        String body = EntityUtils.toString(entity);
-
-        JSONObject json;
-        try {
-            json = new JSONObject(body);
-        } catch (Exception e) {
-            json = new JSONObject();
-            json.put("data", new JSONArray(body));
-        }
-
-        // Parse pagination headers if present
-        String linkHeader = response.getFirstHeader("Link") != null ? response.getFirstHeader("Link").getValue() : null;
-
-        if (linkHeader != null) {
-            for (String part : linkHeader.split(",")) {
-                if (part.contains("rel=\"next\"")) {
-                    String nextLink = part.substring(part.indexOf("<") + 1, part.indexOf(">"));
-                    json.put("nextLink", nextLink);
-                }
-            }
-        }
-
-        jsonCache.put(url, json);
-        return json;
-    }
 
     public List<String> fetchForkSelection(String repository) {
         // Step 1: Fetch all forks (parent, siblings, children)
