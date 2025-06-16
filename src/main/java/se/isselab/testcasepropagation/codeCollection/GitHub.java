@@ -28,6 +28,8 @@ import org.json.JSONObject;
 import se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
@@ -176,52 +178,117 @@ public class GitHub {
 
 
 
-    public List<String> fetchForkSelection(String repository) {
-        // Step 1: Fetch all forks (parent, siblings, children)
-        Set<String> candidateForks = null;
-        try {
-            candidateForks = fetchAllForks(repository);
-        } catch (Exception e) {
-            System.err.println("Failed to fetch forks: " + e);
-            throw new RuntimeException(e);
+    public List<String> fetchForkSelection(String repository) throws IOException, InterruptedException {
+        List<JSONObject> forks = fetchAllForks(repository);
+        List<JSONObject> filtered = filterForks(forks, repository);
+        List<JSONObject> metadatas = fetchMetaData(filtered);
+        int topN = 80;
+        return rankForks(metadatas, topN);
+    }
+
+    public List<JSONObject> fetchAllForks(String repository) throws IOException, InterruptedException {
+        List<JSONObject> forks = new ArrayList<>();
+
+        // Step 1: Find the parent
+        JSONObject repo = getJsonObject("https://api.github.com/repos/" + repository);
+        if (repo != null && repo.has("parent")) {
+            String parentFullName = repo.getJSONObject("parent").getString("full_name");
+            forks.add(getJsonObject("https://api.github.com/repos/" + parentFullName));
+
+            // Step 2: Add siblings
+            for (Object fork : getPaginatedJsonArray("https://api.github.com/repos/" + parentFullName + "/forks")) {
+                forks.add((JSONObject) fork);
+            }
+            forks.remove(repo);
         }
 
-        // Step 2: Filter and collect metadata
-        List<JSONObject> qualifiedForks = new ArrayList<>();
-        for (String repo : candidateForks) {
-            try {
-                JSONObject repoJson = getJsonObject("https://api.github.com/repos/" + repo);
+        // Step 3: Add children
+        for (Object fork : getPaginatedJsonArray("https://api.github.com/repos/" + repository + "/forks")) {
+            forks.add((JSONObject) fork);
+        }
 
-                // ASE paper checks
-                String forkDefaultBranch = repoJson.getString("default_branch");
-                if (repoJson.has("parent")) {
-                    String parentRepo = repoJson.getJSONObject("parent").getString("full_name");
-                    String parentDefaultBranch = getJsonObject("https://api.github.com/repos/" + parentRepo).getString("default_branch");
+        return forks;
+    }
 
-                    if (!hasAtLeast5ForkSpecificCommits(repoJson, parentDefaultBranch, forkDefaultBranch)) continue;
-                    if (!hasAtLeast30DaysEvolution(repoJson, parentDefaultBranch, forkDefaultBranch)) continue;
-                }
-                if (wasDiscontinuedAfterMerge(repo)) continue;
+    private List<JSONObject> filterForks(List<JSONObject> forks, String repository) throws InterruptedException {
+        List<JSONObject> result = new ArrayList<>();
 
-                // Collect metadata
-                JSONArray commits = getPaginatedJsonArray("https://api.github.com/repos/" + repo + "/commits");
-                int contributorsCount = getPaginatedJsonArray("https://api.github.com/repos/" + repo + "/contributors").length();
+        for (JSONObject fork : forks) {
+            if (!fork.has("parent") || fork.getJSONObject("parent").isEmpty()) {
+                result.add(fork);
+                continue;
+            }
+            String parentDefaultBranch = fork.getJSONObject("parent").getString("default_branch");
+            String forkDefaultBranch = fork.getString("default_branch");
 
-                repoJson.put("commits", commits.length());
-                repoJson.put("contributors", contributorsCount);
+            // ASE paper checks
+            if (hasAtLeast5ForkSpecificCommits(fork, parentDefaultBranch, forkDefaultBranch) &&
+                hasAtLeast30DaysEvolution(fork, parentDefaultBranch, forkDefaultBranch) &&
+                !wasDiscontinuedAfterMerge(fork.getString("full_name"))) {
 
-                qualifiedForks.add(repoJson);
-
-            } catch (Exception e) {
-                System.err.println("Skipping repo due to error: " + repo);
+                result.add(fork);
+            } else {
+                cache.remove("https://api.github.com/repos/" + fork.getString("full_name"));
             }
         }
+        return result;
+    }
 
+
+    private List<JSONObject> fetchMetaData(List<JSONObject> forks) throws IOException, InterruptedException {
+        List<JSONObject> result = new ArrayList<>();
+        for (JSONObject fork : forks) {
+            fork.put("contributors_count", fetchContributorsCount(fork));
+            fork.put("commits_count", fetchCommitsCount(fork));
+            result.add(fork);
+        }
+        return result;
+    }
+
+    private int fetchContributorsCount(JSONObject repo) throws IOException, InterruptedException {
+        HttpResponse response = sendGetRequest("https://api.github.com/repos/" + repo.getString("full_name") + "/contributors?per_page=1");
+        return extractCountFromLinkHeader(response);
+    }
+
+    private int fetchCommitsCount(JSONObject repo) throws IOException, InterruptedException {
+        HttpResponse response = sendGetRequest("https://api.github.com/repos/" + repo.getString("full_name") + "/commits?per_page=1");
+        return extractCountFromLinkHeader(response);
+    }
+
+    private int extractCountFromLinkHeader(HttpResponse response) {
+        String link = Arrays.stream(response.getAllHeaders())
+                .filter(h -> h.getName().equals("Link"))
+                .map(org.apache.http.Header::getValue)
+                .findFirst().orElse(null);
+
+        if (link == null || !link.contains("rel=\"last\"")) return 1;
+
+        String lastUrl = Arrays.stream(link.split(","))
+                .filter(s -> s.contains("rel=\"last\""))
+                .map(s -> s.substring(s.indexOf("<") + 1, s.indexOf(">")))
+                .findFirst().orElse(null);
+
+        if (lastUrl == null) return 1;
+
+        try {
+            URI uri = new URI(lastUrl);
+            String[] parts = uri.getQuery().split("&");
+            for (String part : parts) {
+                if (part.startsWith("page=")) return Integer.parseInt(part.split("=")[1]);
+            }
+        } catch (URISyntaxException e) {
+            return 1;
+        }
+        return 1;
+    }
+
+
+    private List<String> rankForks(List<JSONObject> forks, int topN) {;
         // Step 3: Sort by commits, contributors, stars, forks
-        qualifiedForks.sort((a, b) -> {
-            int cmp = Integer.compare(b.getInt("commits"), a.getInt("commits"));
+        forks.sort((a, b) -> {
+            int cmp = Integer.compare(b.getInt("commits_count"), a.getInt("commits_count"));
             if (cmp != 0) return cmp;
-            cmp = Integer.compare(b.getInt("contributors"), a.getInt("contributors"));
+            cmp = Integer.compare(b.getInt("contributors_count"), a.getInt("contributors_count"));
             if (cmp != 0) return cmp;
             cmp = Integer.compare(b.getInt("stargazers_count"), a.getInt("stargazers_count"));
             if (cmp != 0) return cmp;
@@ -229,32 +296,10 @@ public class GitHub {
         });
 
         // Step 4: Return up to top 100
-        return qualifiedForks.stream().limit(100).map(f -> f.getString("full_name")).toList();
+        return forks.stream().limit(topN).map(f -> f.getString("full_name")).toList();
     }
 
-    public Set<String> fetchAllForks(String repository) throws IOException, InterruptedException {
-        Set<String> forks = new HashSet<>();
 
-        // Step 1: Find the parent
-        JSONObject repo = getJsonObject("https://api.github.com/repos/" + repository);
-        if (repo != null && repo.has("parent")) {
-            String parentFullName = repo.getJSONObject("parent").getString("full_name");
-            forks.add(parentFullName);
-
-            // Step 2: Add siblings
-            for (Object fork : getPaginatedJsonArray("https://api.github.com/repos/" + parentFullName + "/forks")) {
-                forks.add(((JSONObject) fork).getString("full_name"));
-            }
-            forks.remove(repository);
-        }
-
-        // Step 3: Add children
-        for (Object fork : getPaginatedJsonArray("https://api.github.com/repos/" + repository + "/forks")) {
-            forks.add(((JSONObject) fork).getString("full_name"));
-        }
-
-        return forks;
-    }
 
     private boolean hasAtLeast5ForkSpecificCommits(JSONObject repository, String parentDefaultBranch, String forkDefaultBranch) {
         try {
