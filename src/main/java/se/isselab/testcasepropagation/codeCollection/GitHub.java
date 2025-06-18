@@ -19,8 +19,12 @@ import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.util.EntityUtils;
 import org.jetbrains.annotations.NotNull;
 import org.json.JSONArray;
@@ -33,14 +37,34 @@ import java.net.URISyntaxException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.net.SocketTimeoutException;
 
 public class GitHub {
     private final String accessToken;
     private final Map<String, Object> cache = new HashMap<>();
-    private HttpClient client = HttpClients.createDefault();
+    private HttpClient client;
 
-    public GitHub(String accessToken){
+    public GitHub(String accessToken) {
         this.accessToken = accessToken;
+        
+        // Connection pool configuration
+        PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager();
+        cm.setMaxTotal(100);                 // Maximum total connections
+        cm.setDefaultMaxPerRoute(20);        // Maximum connections per route
+        
+        // Request configuration
+        RequestConfig requestConfig = RequestConfig.custom()
+            .setConnectTimeout(30000)        // 30 seconds connection timeout
+            .setSocketTimeout(30000)         // 30 seconds socket timeout
+            .setConnectionRequestTimeout(30000)
+            .build();
+        
+        // Build HttpClient with connection pool
+        this.client = HttpClients.custom()
+            .setConnectionManager(cm)
+            .setDefaultRequestConfig(requestConfig)
+            .build();
     }
 
     public List<String> fetchAllFilePaths(String fork) {
@@ -179,10 +203,18 @@ public class GitHub {
 
 
     public List<String> fetchForkSelection(String repository) throws IOException, InterruptedException {
+        System.out.println(Instant.now() + " || About to start: fetchAllForks()");
         List<JSONObject> forks = fetchAllForks(repository);
+
+        System.out.println(Instant.now() + " || About to start: filterForks()");
         List<JSONObject> filtered = filterForks(forks, repository);
+
+        System.out.println(Instant.now() + " || About to start: fetchMetaData()");
         List<JSONObject> metadatas = fetchMetaData(filtered);
         int topN = 80;
+
+
+        System.out.println(Instant.now() + " || About to start: rankForks()");
         return rankForks(metadatas, topN);
     }
 
@@ -194,17 +226,20 @@ public class GitHub {
         if (repo != null && repo.has("parent")) {
             String parentFullName = repo.getJSONObject("parent").getString("full_name");
             forks.add(getJsonObject("https://api.github.com/repos/" + parentFullName));
+            System.out.println("Foung parant and added to list: " + parentFullName);
 
             // Step 2: Add siblings
             for (Object fork : getPaginatedJsonArray("https://api.github.com/repos/" + parentFullName + "/forks")) {
                 forks.add((JSONObject) fork);
+                System.out.println("Foung sibling and added to list: " + ((JSONObject) fork).getString("full_name"));
             }
             forks.remove(repo);
         }
 
         // Step 3: Add children
-        for (Object fork : getPaginatedJsonArray("https://api.github.com/repos/" + repository + "/forks")) {
+        for (Object fork : getJsonArray("https://api.github.com/repos/" + repository + "/forks")) {
             forks.add((JSONObject) fork);
+            System.out.println("Foung child and added to list: " + ((JSONObject) fork).getString("full_name"));
         }
 
         return forks;
@@ -238,7 +273,11 @@ public class GitHub {
     private List<JSONObject> fetchMetaData(List<JSONObject> forks) throws IOException, InterruptedException {
         List<JSONObject> result = new ArrayList<>();
         for (JSONObject fork : forks) {
+
+            System.out.println("Finding contributor count for fork: " + fork.getString("full_name"));
             fork.put("contributors_count", fetchContributorsCount(fork));
+
+            System.out.println("Finding commits count for fork: " + fork.getString("full_name"));
             fork.put("commits_count", fetchCommitsCount(fork));
             result.add(fork);
         }
@@ -246,40 +285,70 @@ public class GitHub {
     }
 
     private int fetchContributorsCount(JSONObject repo) throws IOException, InterruptedException {
-        HttpResponse response = sendGetRequest("https://api.github.com/repos/" + repo.getString("full_name") + "/contributors?per_page=1");
-        return extractCountFromLinkHeader(response);
+        HttpResponse response = null;
+        try {
+            response = sendGetRequest("https://api.github.com/repos/" + repo.getString("full_name") + "/contributors?per_page=1");
+            HttpEntity entity = response.getEntity();
+            EntityUtils.consume(entity); // release connection
+            return extractCountFromLinkHeader(response);
+        } finally {
+            if (response instanceof CloseableHttpResponse) {
+                ((CloseableHttpResponse) response).close();
+            }
+        }
     }
 
     private int fetchCommitsCount(JSONObject repo) throws IOException, InterruptedException {
-        HttpResponse response = sendGetRequest("https://api.github.com/repos/" + repo.getString("full_name") + "/commits?per_page=1");
-        return extractCountFromLinkHeader(response);
+        HttpResponse response = null;
+        try {
+            response = sendGetRequest("https://api.github.com/repos/" + repo.getString("full_name") + "/commits?per_page=1");
+            HttpEntity entity = response.getEntity();
+            EntityUtils.consume(entity); // release connection
+            return extractCountFromLinkHeader(response);
+        } finally {
+            if (response instanceof CloseableHttpResponse) {
+                ((CloseableHttpResponse) response).close();
+            }
+        }
     }
 
     private int extractCountFromLinkHeader(HttpResponse response) {
+        System.out.println("\nStart extracting count from Link Header:");
+
         String link = Arrays.stream(response.getAllHeaders())
                 .filter(h -> h.getName().equals("Link"))
                 .map(org.apache.http.Header::getValue)
                 .findFirst().orElse(null);
 
+        System.out.println(link + "\n");
+
         if (link == null || !link.contains("rel=\"last\"")) return 1;
+
+        System.out.println("Now the lastUrl:");
 
         String lastUrl = Arrays.stream(link.split(","))
                 .filter(s -> s.contains("rel=\"last\""))
                 .map(s -> s.substring(s.indexOf("<") + 1, s.indexOf(">")))
                 .findFirst().orElse(null);
 
+        System.out.println(lastUrl + "\n");
+
         if (lastUrl == null) return 1;
 
         try {
             URI uri = new URI(lastUrl);
-            String[] parts = uri.getQuery().split("&");
-            for (String part : parts) {
-                if (part.startsWith("page=")) return Integer.parseInt(part.split("=")[1]);
-            }
-        } catch (URISyntaxException e) {
+            Map<String, String> queryParams = Arrays.stream(uri.getQuery().split("&"))
+                    .map(param -> param.split("="))
+                    .collect(Collectors.toMap(
+                            param -> param[0],
+                            param -> param[1]
+                    ));
+
+            return queryParams.containsKey("page") ? Integer.parseInt(queryParams.get("page")) : 1;
+
+        } catch (URISyntaxException | NumberFormatException e) {
             return 1;
         }
-        return 1;
     }
 
 
@@ -312,7 +381,7 @@ public class GitHub {
             Instant forkCreationDate = Instant.parse(repository.getString("created_at"));
 
             // 3. Rough prefilter: commits since creation
-            JSONArray commits = getPaginatedJsonArray("https://api.github.com/repos/" + repository + "/commits?since=" + forkCreationDate.toString());
+            JSONArray commits = getPaginatedJsonArray("https://api.github.com/repos/" + repository.getString("full_name") + "/commits?since=" + forkCreationDate.toString());
             if (commits.length() < 5) return false;
 
             // 4. Accurate fork-specific check with /compare/
@@ -323,6 +392,7 @@ public class GitHub {
             return aheadBy >= 5;
 
         } catch (Exception e) {
+            System.out.println("Error in hasAtLeast5ForkSpecificCommits for repository: " + repository.optString("full_name", "unknown") + ": " + e.getMessage());
             return false;
         }
     }
@@ -401,64 +471,123 @@ public class GitHub {
 
 
     private HttpResponse sendGetRequest(String url) throws IOException, InterruptedException {
-        HttpGet request = new HttpGet(url);
-        request.addHeader("Authorization", "Bearer " + accessToken);
-        request.addHeader("Accept", "application/vnd.github.v3+json");
-        HttpResponse response = client.execute(request);
-
-        if (response.getStatusLine().getStatusCode() == 403 &&
-            response.containsHeader("X-RateLimit-Remaining") &&
-            response.getFirstHeader("X-RateLimit-Remaining").getValue().equals("0")) {
-
-            long resetTime = Long.parseLong(response.getFirstHeader("X-RateLimit-Reset").getValue());
-            long waitTime = resetTime - Instant.now().getEpochSecond() + 1;
-            if (waitTime > 0) {
-                System.out.println("Rate limited. Sleeping for " + waitTime + " seconds.");
-                Thread.sleep(waitTime * 1000);
-                return sendGetRequest(url); // retry
+        int maxRetries = 3;
+        int currentTry = 0;
+        
+        while (currentTry < maxRetries) {
+            try {
+                HttpGet request = new HttpGet(url);
+                request.addHeader("Authorization", "Bearer " + accessToken);
+                request.addHeader("Accept", "application/vnd.github.v3+json");
+                HttpResponse response = client.execute(request);
+            
+                int statusCode = response.getStatusLine().getStatusCode();
+            
+                // Handle rate limiting
+                if (statusCode == 403 && response.containsHeader("X-RateLimit-Remaining") &&
+                    response.getFirstHeader("X-RateLimit-Remaining").getValue().equals("0")) {
+                
+                    long resetTime = Long.parseLong(response.getFirstHeader("X-RateLimit-Reset").getValue());
+                    long waitTime = resetTime - Instant.now().getEpochSecond() + 1;
+                    if (waitTime > 0) {
+                        System.out.println("Rate limited. Sleeping for " + waitTime + " seconds.");
+                        Thread.sleep(waitTime * 1000);
+                        continue; // Retry after waiting
+                    }
+                }
+            
+                // Handle other potential error codes
+                if (statusCode >= 500) {
+                    System.out.println("Server error (status " + statusCode + "). Retrying...");
+                    Thread.sleep(1000 * (currentTry + 1)); // Exponential backoff
+                    currentTry++;
+                    continue;
+                }
+            
+                return response;
+            
+            } catch (Exception e) {
+                System.out.println("Request timed out. Attempt " + (currentTry + 1) + " of " + maxRetries);
+                currentTry++;
+                if (currentTry >= maxRetries) throw e;
+                Thread.sleep(1000 * (currentTry + 1));
             }
         }
-        return response;
+        
+        throw new IOException("Failed to get response after " + maxRetries + " attempts");
     }
 
     private JSONObject getJsonObject(String url) throws IOException, InterruptedException {
+        System.out.println("In getJsonObject()");
         if (cache.containsKey(url)) return (JSONObject) cache.get(url);
 
-        HttpResponse response = sendGetRequest(url);
-        String body = EntityUtils.toString(response.getEntity());
-        JSONObject object = new JSONObject(body);
+        HttpResponse response = null;
+        try {
+            response = sendGetRequest(url);
+            HttpEntity entity = response.getEntity();
+            String body = EntityUtils.toString(entity);
 
-        cache.put(url, object);
-        return object;
+            EntityUtils.consume(entity); // release connection back to pool
+
+            JSONObject object = new JSONObject(body);
+            cache.put(url, object);
+            System.out.println("About to leave getJsonObject()");
+            return object;
+        } finally {
+            if (response instanceof CloseableHttpResponse) {
+                ((CloseableHttpResponse) response).close();
+            }
+        }
     }
 
     private JSONArray getJsonArray(String url) throws IOException, InterruptedException {
         if (cache.containsKey(url)) return (JSONArray) cache.get(url);
 
-        HttpResponse response = sendGetRequest(url);
-        String body = EntityUtils.toString(response.getEntity());
-        JSONArray array = new JSONArray(body);
+        HttpResponse response = null;
+        try {
+            response = sendGetRequest(url);
+            HttpEntity entity = response.getEntity();
+            String body = EntityUtils.toString(entity);
 
-        cache.put(url, array);
-        return array;
+            EntityUtils.consume(entity); // release connection back to pool
+
+            JSONArray array = new JSONArray(body);
+            cache.put(url, array);
+            return array;
+        } finally {
+            if (response instanceof CloseableHttpResponse) {
+                ((CloseableHttpResponse) response).close();
+            }
+        }
     }
 
     private JSONArray getPaginatedJsonArray(String baseUrl) throws IOException, InterruptedException {
         if (cache.containsKey(baseUrl)) return (JSONArray) cache.get(baseUrl);
 
         JSONArray all = new JSONArray();
-        String url = baseUrl;
+        String url = baseUrl + (baseUrl.contains("?") ? "&" : "?") + "per_page=100";
+
         while (url != null) {
-            HttpResponse response = sendGetRequest(url);
-            String body = EntityUtils.toString(response.getEntity());
+            HttpResponse response = null;
+            try {
+                response = sendGetRequest(url);
+                HttpEntity entity = response.getEntity();
+                String body = EntityUtils.toString(entity);
 
-            JSONArray array = new JSONArray(body);
-            for (int i = 0; i < array.length(); i++) {
-                all.put(array.get(i));
+                EntityUtils.consume(entity); // release connection back to pool
+
+                JSONArray array = new JSONArray(body);
+                for (int i = 0; i < array.length(); i++) {
+                    all.put(array.get(i));
+                }
+                url = getNextPageLink(response);
+                System.out.println("Next URL found: " + url);
+            } finally {
+                if (response instanceof CloseableHttpResponse) {
+                    ((CloseableHttpResponse) response).close();
+                }
             }
-            url = getNextPageLink(response);
         }
-
         cache.put(baseUrl, all);
         return all;
     }
@@ -467,12 +596,27 @@ public class GitHub {
         Header linkHeader = response.getFirstHeader("Link");
         if (linkHeader == null) return null;
 
-        for (String part : linkHeader.getValue().split(",")) {
-            if (part.contains("rel=\"next\"")) {
-                return part.substring(part.indexOf("<") + 1, part.indexOf(">"));
+        String[] parts = linkHeader.getValue().split(",\\s*");
+        for (String part : parts) {
+            String[] sections = part.split(";\\s*");
+            if (sections.length == 2 && sections[1].equals("rel=\"next\"")) {
+                String url = sections[0].trim();
+                if (url.startsWith("<") && url.endsWith(">")) {
+                    return url.substring(1, url.length() -1);
+                }
             }
         }
         return null;
+    }
+
+    public void close() {
+        if (client instanceof CloseableHttpClient) {
+            try {
+                ((CloseableHttpClient) client).close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
 }

@@ -70,7 +70,16 @@ public class Pipeline {
         // TODO: Implement simple UI test
         System.out.println("\nIMPLEMENTATION OF INTEREST\n");
 
-        List<String> availableForks = Arrays.asList("one/fork1", "one/fork3", "twelve/fork22", "hundred/fork9", "one/fork10", "one/fork30", "twelve/fork220", "hundred/fork90", "one/fork100", "one/fork300", "twelve/fork2200", "hundred/fork900", "one/fork1000", "one/fork3000", "twelve/fork22000", "hundred/fork9000", "one/fork10000", "one/fork30000", "twelve/fork220000", "hundred/fork90000" );
+        List<String> availableForks = null;
+        try {
+            availableForks = gh.fetchForkSelection(repository_input);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+        //List<String> availableForks = Arrays.asList("one/fork1", "one/fork3", "twelve/fork22", "hundred/fork9", "one/fork10", "one/fork30", "twelve/fork220", "hundred/fork90", "one/fork100", "one/fork300", "twelve/fork2200", "hundred/fork900", "one/fork1000", "one/fork3000", "twelve/fork22000", "hundred/fork9000", "one/fork10000", "one/fork30000", "twelve/fork220000", "hundred/fork90000" );
         System.out.println("Available forks: " + availableForks);
 
         List<String> selectedForks = selectForksDialog(availableForks);
@@ -104,22 +113,24 @@ public class Pipeline {
             forks.addAll(parentForks);
         }
 
-         */
-        Set<String> forks = null;
+
+        List<String> forks = null;
         try {
             forks = gh.fetchAllForks(repository);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-        if (settingsViewFactory != null && forks != null) {
-            settingsViewFactory.updateForkLabel(forks.size());
+
+         */
+        if (settingsViewFactory != null && selectedForks != null) {
+            settingsViewFactory.updateForkLabel(selectedForks.size());
         }
 
 
 
         // TODO: Move UI implementation here
 
-        for(String fork : forks){
+        for(String fork : selectedForks){
             // Step 2: Get all file paths in the fork
             List<String> filePaths = gh.fetchAllFilePaths(fork);
 
