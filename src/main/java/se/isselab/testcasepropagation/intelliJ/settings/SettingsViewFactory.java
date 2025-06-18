@@ -51,6 +51,8 @@ public class SettingsViewFactory implements ToolWindowFactory {
     private JButton startPropagate;
     private Pipeline pipeline;
 
+    private JCheckBox onlyTest; // TODO: Testing code
+
 
     public SettingsViewFactory() {
         instance = this;
@@ -76,6 +78,12 @@ public class SettingsViewFactory implements ToolWindowFactory {
         repositoryUrlField.setMaximumSize(new Dimension(300, 30)); // Set the size of the text field
         repositoryUrlField.setAlignmentX(Component.CENTER_ALIGNMENT);
         panel.add(repositoryUrlField);
+
+        // TODO: Testing code
+        onlyTest = new JCheckBox("Only testing");
+        onlyTest.setAlignmentX(Component.CENTER_ALIGNMENT);
+        onlyTest.setSelected(false);
+        panel.add(onlyTest);
 
         startFetch = new JButton("Start fetching");
         startFetch.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -161,7 +169,8 @@ public class SettingsViewFactory implements ToolWindowFactory {
         ProgressManager.getInstance().run(new Task.Backgroundable(currentProject, "Running Test Button Action") {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
-                pipeline.fetchPipeline(repository);
+                boolean test = onlyTest.isSelected(); // TODO: Testing code
+                pipeline.fetchPipeline(repository, test);
                 SwingUtilities.invokeLater(() -> {
 
                 });

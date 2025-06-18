@@ -59,7 +59,7 @@ public class Pipeline {
         codeDifferenceViewer = new CodeDifferenceViewer(this);
     }
 
-    public void fetchPipeline(String repository_input){
+    public void fetchPipeline(String repository_input, boolean test){
         String repository = repository_input;
         SettingsViewFactory settingsViewFactory = SettingsViewFactory.getInstance();
 
@@ -92,6 +92,14 @@ public class Pipeline {
         }
 
         System.out.println("\nPIPELINE CONTINUES\n");
+
+        // TODO: Testing code, remove later
+        if (test) {
+            if (settingsViewFactory != null) {
+                settingsViewFactory.enableFetchButton(true);
+            }
+            return;
+        }
 
         FileFinder fileFinder = new FileFinder();
         int testFileCounter = 0;
