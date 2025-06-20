@@ -44,6 +44,7 @@ public class GitHub {
     private final String accessToken;
     private final Map<String, Object> cache = new HashMap<>();
     private HttpClient client;
+    int requestCount = 1;
 
     public GitHub(String accessToken) {
         this.accessToken = accessToken;
@@ -206,16 +207,24 @@ public class GitHub {
         System.out.println(Instant.now() + " || About to start: fetchAllForks()");
         List<JSONObject> forks = fetchAllForks(repository);
 
+        System.out.println("\n_________________________\nAMOUNT OF FOUND FORKS: " + forks.size() + "\n_________________________\n");
+
         System.out.println(Instant.now() + " || About to start: filterForks()");
         List<JSONObject> filtered = filterForks(forks, repository);
 
+        System.out.println("\n_________________________\nAMOUNT OF FILTERED FORKS: " + forks.size() + "\n_________________________\n");
+
         System.out.println(Instant.now() + " || About to start: fetchMetaData()");
         List<JSONObject> metadatas = fetchMetaData(filtered);
+
+        System.out.println("\n_________________________\nAMOUNT OF METADATA FORKS: " + forks.size() + "\n_________________________\n");
+
         int topN = 80;
-
-
         System.out.println(Instant.now() + " || About to start: rankForks()");
-        return rankForks(metadatas, topN);
+        List<String> ranked = rankForks(metadatas, topN);
+
+        System.out.println("\n_________________________\nAMOUNT OF RANKED FORKS: " + forks.size() + "\n_________________________\n");
+        return ranked;
     }
 
     public List<JSONObject> fetchAllForks(String repository) throws IOException, InterruptedException {
@@ -225,21 +234,23 @@ public class GitHub {
         JSONObject repo = getJsonObject("https://api.github.com/repos/" + repository);
         if (repo != null && repo.has("parent")) {
             String parentFullName = repo.getJSONObject("parent").getString("full_name");
-            forks.add(getJsonObject("https://api.github.com/repos/" + parentFullName));
-            System.out.println("Foung parant and added to list: " + parentFullName);
+            forks.add(repo.getJSONObject("parent"));
+            // TODO: forks.add(getJsonObject("https://api.github.com/repos/" + parentFullName)); ? remove?
 
             // Step 2: Add siblings
             for (Object fork : getPaginatedJsonArray("https://api.github.com/repos/" + parentFullName + "/forks")) {
-                forks.add((JSONObject) fork);
-                System.out.println("Foung sibling and added to list: " + ((JSONObject) fork).getString("full_name"));
+                JSONObject sibling = (JSONObject) fork;
+                sibling.put("parent", repo.getJSONObject("parent"));
+                forks.add(sibling);
             }
-            forks.remove(repo);
+            forks.removeIf(f -> repository.equals(f.getString("full_name")));
         }
 
         // Step 3: Add children
-        for (Object fork : getJsonArray("https://api.github.com/repos/" + repository + "/forks")) {
+        for (Object fork : getPaginatedJsonArray("https://api.github.com/repos/" + repository + "/forks")) {
+            JSONObject child = (JSONObject) fork;
+            child.put("parent", repo);
             forks.add((JSONObject) fork);
-            System.out.println("Foung child and added to list: " + ((JSONObject) fork).getString("full_name"));
         }
 
         return forks;
@@ -259,11 +270,19 @@ public class GitHub {
             // ASE paper checks
             if (hasAtLeast5ForkSpecificCommits(fork, parentDefaultBranch, forkDefaultBranch) &&
                 hasAtLeast30DaysEvolution(fork, parentDefaultBranch, forkDefaultBranch) &&
-                !wasDiscontinuedAfterMerge(fork.getString("full_name"))) {
+                !wasDiscontinuedAfterMerge(fork, parentDefaultBranch, forkDefaultBranch)) {
 
                 result.add(fork);
+                System.out.println("SUCCESS #" + result.size() + ": " + fork.optString("full_name", "unknown"));
+
             } else {
-                cache.remove("https://api.github.com/repos/" + fork.getString("full_name"));
+                String parentFullName = fork.getJSONObject("parent").getString("full_name");
+
+                String forkOwner = fork.getJSONObject("owner").getString("login");
+
+                //cache.remove("https://api.github.com/repos/" + fork.getString("full_name")); // TODO: wrong but fix is complicated
+
+                cache.remove("https://api.github.com/repos/" + parentFullName + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch);
             }
         }
         return result;
@@ -273,11 +292,7 @@ public class GitHub {
     private List<JSONObject> fetchMetaData(List<JSONObject> forks) throws IOException, InterruptedException {
         List<JSONObject> result = new ArrayList<>();
         for (JSONObject fork : forks) {
-
-            System.out.println("Finding contributor count for fork: " + fork.getString("full_name"));
             fork.put("contributors_count", fetchContributorsCount(fork));
-
-            System.out.println("Finding commits count for fork: " + fork.getString("full_name"));
             fork.put("commits_count", fetchCommitsCount(fork));
             result.add(fork);
         }
@@ -313,25 +328,17 @@ public class GitHub {
     }
 
     private int extractCountFromLinkHeader(HttpResponse response) {
-        System.out.println("\nStart extracting count from Link Header:");
-
         String link = Arrays.stream(response.getAllHeaders())
                 .filter(h -> h.getName().equals("Link"))
                 .map(org.apache.http.Header::getValue)
                 .findFirst().orElse(null);
 
-        System.out.println(link + "\n");
-
         if (link == null || !link.contains("rel=\"last\"")) return 1;
-
-        System.out.println("Now the lastUrl:");
 
         String lastUrl = Arrays.stream(link.split(","))
                 .filter(s -> s.contains("rel=\"last\""))
                 .map(s -> s.substring(s.indexOf("<") + 1, s.indexOf(">")))
                 .findFirst().orElse(null);
-
-        System.out.println(lastUrl + "\n");
 
         if (lastUrl == null) return 1;
 
@@ -380,15 +387,27 @@ public class GitHub {
             // 2. Get fork creation date
             Instant forkCreationDate = Instant.parse(repository.getString("created_at"));
 
+            // TODO: check here for pushed_at before created_at?
+
+            Instant forkPushDate = Instant.parse(repository.getString("pushed_at"));
+
+            if (forkPushDate.isBefore(forkCreationDate)) System.out.println("OUT: PUSH BEFORE CREATION: " + repository.optString("full_name", "unknown"));
+            if (forkPushDate.isBefore(forkCreationDate)) return false;
+
+            /*
             // 3. Rough prefilter: commits since creation
             JSONArray commits = getPaginatedJsonArray("https://api.github.com/repos/" + repository.getString("full_name") + "/commits?since=" + forkCreationDate.toString());
             if (commits.length() < 5) return false;
+
+             */
 
             // 4. Accurate fork-specific check with /compare/
             String compareUrl = "https://api.github.com/repos/" + parentFullName + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch;
             JSONObject compareJson = getJsonObject(compareUrl);
             int aheadBy = compareJson.getInt("ahead_by");
 
+            if (aheadBy >= 5) System.out.println("IN: AT LEAST 5 COMMITS: " + repository.optString("full_name", "unknown"));
+            if (aheadBy < 5) System.out.println("OUT: LESS THAN 5 COMMITS: " + repository.optString("full_name", "unknown"));
             return aheadBy >= 5;
 
         } catch (Exception e) {
@@ -400,49 +419,50 @@ public class GitHub {
     private boolean hasAtLeast30DaysEvolution(JSONObject repository, String parentDefaultBranch, String forkDefaultBranch) throws InterruptedException {
         try {
             String parentFullName = repository.getJSONObject("parent").getString("full_name");
-            if (parentFullName == null) {
-                JSONArray commits = getPaginatedJsonArray("https://api.github.com/repos/" + repository + "/commits");
-                if (commits.length() < 2) return false;
 
-                Instant first = Instant.parse(commits.getJSONObject(commits.length() - 1).getJSONObject("commit").getJSONObject("committer").getString("date"));
-                Instant last = Instant.parse(commits.getJSONObject(0).getJSONObject("commit").getJSONObject("committer").getString("date"));
+            String forkOwner = repository.getJSONObject("owner").getString("login");
 
-                return Duration.between(first, last).toDays() >= 30;
-            } else {
-                String forkOwner = repository.getJSONObject("owner").getString("login");
+            // Compare parent...fork to get only fork-specific commits
+            String compareUrl = "https://api.github.com/repos/" + parentFullName + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch;
+            JSONObject compareJson = getJsonObject(compareUrl);
 
-                // Compare parent...fork to get only fork-specific commits
-                String compareUrl = "https://api.github.com/repos/" + parentFullName + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch;
-                JSONObject compareJson = getJsonObject(compareUrl);
+            if (!compareJson.has("commits")) return false;
+            JSONArray forkCommits = compareJson.getJSONArray("commits");
+            if (forkCommits.isEmpty()) return false;
 
-                if (!compareJson.has("commits")) return false;
-                JSONArray forkCommits = compareJson.getJSONArray("commits");
-                if (forkCommits.isEmpty()) return false;
+            // TODO: is this new implementation correct?
+            Instant mostRecentCommit = Instant.parse(forkCommits.getJSONObject(forkCommits.length() -1).getJSONObject("commit").getJSONObject("committer").getString("date"));
+            Instant creationDate = Instant.parse(repository.getString("created_at"));
 
-                // Get the earliest and latest commit dates
-                Instant earliest = Instant.MAX;
-                Instant latest = Instant.MIN;
+            /*
+            // Get the earliest and latest commit dates
+            Instant earliest = Instant.MAX;
+            Instant latest = Instant.MIN;
 
-                for (int i = 0; i < forkCommits.length(); i++) {
-                    JSONObject commit = forkCommits.getJSONObject(i).getJSONObject("commit");
-                    String dateStr = commit.getJSONObject("committer").getString("date");
-                    Instant date = Instant.parse(dateStr);
+            for (int i = 0; i < forkCommits.length(); i++) {
+                JSONObject commit = forkCommits.getJSONObject(i).getJSONObject("commit");
+                String dateStr = commit.getJSONObject("committer").getString("date");
+                Instant date = Instant.parse(dateStr);
 
-                    if (date.isBefore(earliest)) earliest = date;
-                    if (date.isAfter(latest)) latest = date;
-                }
-
-                long days = Duration.between(earliest, latest).toDays();
-                return days >= 30;
+                if (date.isBefore(earliest)) earliest = date;
+                if (date.isAfter(latest)) latest = date;
             }
+
+             */
+
+            long days = Duration.between(creationDate, mostRecentCommit).toDays();
+            if (days >= 30) System.out.println("IN: EVOLUTION: " + repository.optString("full_name", "unknown"));
+            if (days < 30) System.out.println("OUT: NO EVOLUTION: " + repository.optString("full_name", "unknown"));
+            return days >= 30;
 
         } catch (IOException e) {
             return false;
         }
     }
 
-    private boolean wasDiscontinuedAfterMerge(String repository) {
+    private boolean wasDiscontinuedAfterMerge(JSONObject repository, String parentDefaultBranch, String forkDefaultBranch) {
         try {
+            /*
             String commitsUrl = "https://api.github.com/repos/" + repository + "/commits";
             JSONArray commits = getJsonArray(commitsUrl);
 
@@ -462,6 +482,35 @@ public class GitHub {
 
             return daysSinceLastCommit > 180;
 
+             */
+
+            String parentFullName = repository.getJSONObject("parent").getString("full_name");
+
+            String forkOwner = repository.getJSONObject("owner").getString("login");
+
+            // Compare parent...fork to get only fork-specific commits
+            String compareUrl = "https://api.github.com/repos/" + parentFullName + "/compare/" + parentDefaultBranch + "..." + forkOwner + ":" + forkDefaultBranch;
+            JSONObject compareJson = getJsonObject(compareUrl);
+
+            JSONObject lastCommit = compareJson.getJSONArray("commits")
+                    .getJSONObject(compareJson.getInt("total_commits") -1);
+
+            boolean isMerge = lastCommit.getJSONArray("parents").length() > 1;
+            if (!isMerge) System.out.println("IN: NOT MERGED: " + repository.optString("full_name", "unknown"));
+            if (!isMerge) return false;
+
+            String commitDateString = lastCommit
+                    .getJSONObject("commit")
+                    .getJSONObject("committer")
+                    .getString("date");
+
+            Instant commitDate = Instant.parse(commitDateString);
+            long daysSinceLastCommit = Duration.between(commitDate, Instant.now()).toDays();
+
+            if (daysSinceLastCommit > 180) System.out.println("OUT: DISCONTINUED: " + repository.optString("full_name", "unknown"));
+            if (daysSinceLastCommit <= 180) System.out.println("IN: NOT DISCONTINUED: " + repository.optString("full_name", "unknown"));
+            return daysSinceLastCommit > 180;
+
         } catch (Exception e) {
             return false;
         }
@@ -471,6 +520,9 @@ public class GitHub {
 
 
     private HttpResponse sendGetRequest(String url) throws IOException, InterruptedException {
+        System.out.println("Sending GET request #" + requestCount + " to: " + url);
+        requestCount++;
+
         int maxRetries = 3;
         int currentTry = 0;
         
@@ -507,6 +559,7 @@ public class GitHub {
                 return response;
             
             } catch (Exception e) {
+                System.out.println("Exception: " + e.getMessage());
                 System.out.println("Request timed out. Attempt " + (currentTry + 1) + " of " + maxRetries);
                 currentTry++;
                 if (currentTry >= maxRetries) throw e;
@@ -518,7 +571,6 @@ public class GitHub {
     }
 
     private JSONObject getJsonObject(String url) throws IOException, InterruptedException {
-        System.out.println("In getJsonObject()");
         if (cache.containsKey(url)) return (JSONObject) cache.get(url);
 
         HttpResponse response = null;
@@ -531,7 +583,6 @@ public class GitHub {
 
             JSONObject object = new JSONObject(body);
             cache.put(url, object);
-            System.out.println("About to leave getJsonObject()");
             return object;
         } finally {
             if (response instanceof CloseableHttpResponse) {
@@ -562,7 +613,7 @@ public class GitHub {
     }
 
     private JSONArray getPaginatedJsonArray(String baseUrl) throws IOException, InterruptedException {
-        if (cache.containsKey(baseUrl)) return (JSONArray) cache.get(baseUrl);
+        // if (cache.containsKey(baseUrl)) return (JSONArray) cache.get(baseUrl);
 
         JSONArray all = new JSONArray();
         String url = baseUrl + (baseUrl.contains("?") ? "&" : "?") + "per_page=100";
@@ -581,14 +632,13 @@ public class GitHub {
                     all.put(array.get(i));
                 }
                 url = getNextPageLink(response);
-                System.out.println("Next URL found: " + url);
             } finally {
                 if (response instanceof CloseableHttpResponse) {
                     ((CloseableHttpResponse) response).close();
                 }
             }
         }
-        cache.put(baseUrl, all);
+        // cache.put(baseUrl, all);
         return all;
     }
 
