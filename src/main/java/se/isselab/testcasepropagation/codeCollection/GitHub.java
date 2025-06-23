@@ -161,11 +161,11 @@ public class GitHub {
 
 
 
-    public Set<String> findModifiedTestFiles(String repository, String fork, String defaultBranch, String forkDefaultbranch) throws IOException, InterruptedException {
+    public Set<String> findModifiedTestFiles(String repository, String fork, String defaultBranch, String forkDefaultBranch) throws IOException, InterruptedException {
         Set<String> modifiedFiles = new HashSet<>();
 
         // Compare fork:forkDefaultBranch against repository:defaultBranch
-        String compareUrl = "https://api.github.com/repos/" + repository + "/compare/" + defaultBranch + "..." + fork + ":" + forkDefaultbranch;
+        String compareUrl = "https://api.github.com/repos/" + repository + "/compare/" + defaultBranch + "..." + fork + ":" + forkDefaultBranch;
 
         JSONObject compareJson = getJsonObject(compareUrl);
 
