@@ -161,31 +161,55 @@ public class GitHub {
 
 
 
+    public Set<String> findModifiedTestFiles(String repository, String fork, String defaultBranch, String forkDefaultbranch) throws IOException, InterruptedException {
+        Set<String> modifiedFiles = new HashSet<>();
 
-    public Set<String> findModifiedFilesAfterCreation(String owner, String repo) throws IOException, InterruptedException {
-        Instant creationDate = getRepoCreationDate(owner, repo);
+        // Compare fork:forkDefaultBranch against repository:defaultBranch
+        String compareUrl = "https://api.github.com/repos/" + repository + "/compare/" + defaultBranch + "..." + fork + ":" + forkDefaultbranch;
+
+        JSONObject compareJson = getJsonObject(compareUrl);
+
+        JSONArray files = compareJson.getJSONArray("files");
+
+        if (files.length() >= 300) {
+            System.out.println("WARNING: Compare API returned 300 files, falling back to commit-by-commit approach.");
+            return findModifiedFilesAfterCreation(fork);
+        }
+
+        for (int i = 0; i < files.length(); i++) {
+            JSONObject file = files.getJSONObject(i);
+            String filename = file.getString("filename");
+            if ("removed".equals(file.getString("status"))) continue;
+            if (filename.endsWith(".java") && filename.contains("src/test")) modifiedFiles.add(filename);
+        }
+
+        return modifiedFiles;
+    }
+
+    public Set<String> findModifiedFilesAfterCreation(String repository) throws IOException, InterruptedException {
+        Instant creationDate = getRepoCreationDate(repository);
 
         Set<String> modifiedFiles = new HashSet<>();
-        String commitsUrl = "https://api.github.com/repos/" + owner + "/" + repo + "/commits?since=" + creationDate.toString();
+        String commitsUrl = "https://api.github.com/repos/" + repository + "/commits?since=" + creationDate.toString();
 
         JSONArray commits = getPaginatedJsonArray(commitsUrl);
 
         for (int i = 0; i < commits.length(); i++) {
             JSONObject commit = commits.getJSONObject(i);
             String sha = commit.getString("sha");
-            modifiedFiles.addAll(getFilesInCommit(owner, repo, sha));
+            modifiedFiles.addAll(getFilesInCommit(repository, sha));
         }
 
         return modifiedFiles;
     }
 
-    private Instant getRepoCreationDate(String owner, String repo) throws IOException, InterruptedException {
-        JSONObject repoJson = getJsonObject("https://api.github.com/repos/" + owner + "/" + repo);
+    private Instant getRepoCreationDate(String repository) throws IOException, InterruptedException {
+        JSONObject repoJson = getJsonObject("https://api.github.com/repos/" + repository);
         return Instant.parse(repoJson.getString("created_at"));
     }
 
-    private Set<String> getFilesInCommit(String owner, String repo, String sha) throws IOException, InterruptedException {
-        JSONObject commitJson = getJsonObject("https://api.github.com/repos/" + owner + "/" + repo + "/commits/" + sha);
+    private Set<String> getFilesInCommit(String repository, String sha) throws IOException, InterruptedException {
+        JSONObject commitJson = getJsonObject("https://api.github.com/repos/" + repository + "/commits/" + sha);
         Set<String> files = new HashSet<>();
         JSONArray fileArray = commitJson.getJSONArray("files");
 
@@ -193,7 +217,7 @@ public class GitHub {
             JSONObject file = fileArray.getJSONObject(i);
             String filename = file.getString("filename");
             if ("removed".equals(file.getString("status"))) continue;
-            if (filename.endsWith(".java")) files.add(filename);
+            if (filename.endsWith(".java") && filename.contains("src/java")) files.add(filename);
         }
 
         return files;
