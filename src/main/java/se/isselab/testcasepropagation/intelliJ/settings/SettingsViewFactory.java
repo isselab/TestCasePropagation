@@ -16,10 +16,12 @@ limitations under the License.
 
 package se.isselab.testcasepropagation.intelliJ.settings;
 
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowFactory;
 import org.apache.http.HttpEntity;
@@ -33,6 +35,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import se.isselab.testcasepropagation.Pipeline;
 import se.isselab.testcasepropagation.codeCollection.GitHub;
+import se.isselab.testcasepropagation.helper.GitHubNameFinder;
 
 import javax.swing.*;
 import java.awt.*;
@@ -77,6 +80,13 @@ public class SettingsViewFactory implements ToolWindowFactory {
         JTextField repositoryUrlField = new JTextField();
         repositoryUrlField.setMaximumSize(new Dimension(300, 30)); // Set the size of the text field
         repositoryUrlField.setAlignmentX(Component.CENTER_ALIGNMENT);
+        // Safely run after the project and git are initialized
+        StartupManager.getInstance(currentProject).runAfterOpened(() -> {
+            ApplicationManager.getApplication().invokeLater(() -> {
+                String gitHubName = GitHubNameFinder.getGitHubName(currentProject);
+                repositoryUrlField.setText(gitHubName);
+            });
+        });
         panel.add(repositoryUrlField);
 
         // TODO: Testing code

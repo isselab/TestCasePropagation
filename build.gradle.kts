@@ -19,10 +19,10 @@ repositories {
 // Configure Gradle IntelliJ Plugin
 // Read more: https://plugins.jetbrains.com/docs/intellij/tools-gradle-intellij-plugin.html
 intellij {
-    version.set("2023.3")
+    version.set("2023.1.5")
     type.set("IC") // Target IDE Platform
 
-    plugins.set(listOf("java", "Git4Idea"))
+    plugins.set(listOf("Git4Idea"))
 }
 
 tasks {
