@@ -22,6 +22,9 @@ import com.intellij.openapi.components.Storage;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @State(
         name = "se.isselab.testcasepropagation.MyPluginSettings",
         storages = {@Storage("MyPluginSettings.xml")}

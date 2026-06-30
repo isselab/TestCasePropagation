@@ -22,6 +22,7 @@ limitations under the License.
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
+    <depends>Git4Idea</depends>
 
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
@@ -35,6 +36,11 @@ limitations under the License.
     <extensions defaultExtensionNs="com.intellij">
         <applicationService serviceInterface="se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings" serviceImplementation="se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettings"/>
         <projectConfigurable instance="se.isselab.testcasepropagation.intelliJ.settings.TestCasePropagationSettingsConfigurable" id="my.plugin.settings" displayName="Test Case Propagation Settings"/>
+    </extensions>
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService
+                serviceInterface="se.isselab.testcasepropagation.intelliJ.settings.ProjectSettings"
+                serviceImplementation="se.isselab.testcasepropagation.intelliJ.settings.ProjectSettings"/>
     </extensions>
 
     <extensionPoints>
