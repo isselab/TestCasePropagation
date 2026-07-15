@@ -53,6 +53,10 @@ public class SettingsViewFactory implements ToolWindowFactory {
     private JButton startFetch;
     private JButton startPropagate;
     private Pipeline pipeline;
+    private JButton findForks;
+    private JButton findApplicableTests;
+    private JButton adaptApplicableTests;
+    private JButton startPropagation;
 
     private JCheckBox onlyTest; // TODO: Testing code
 
@@ -139,6 +143,59 @@ public class SettingsViewFactory implements ToolWindowFactory {
             }
         });
         panel.add(startPropagate);
+
+        findForks = new JButton("Find forks");
+        findForks.setAlignmentX(Component.CENTER_ALIGNMENT);
+        findForks.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String repositoryUrl = repositoryUrlField.getText();
+                if (repositoryUrl != null && repositoryUrl.contains("/") && repositoryUrl.indexOf("/") == repositoryUrl.lastIndexOf("/")) {
+                    // If the format is correct, call the fetch action
+                    fetchButtonAction(repositoryUrl);
+                } else {
+                    // Show dialog if the format is incorrect
+                    JOptionPane.showMessageDialog(panel, "Repository in wrong format", "Invalid Repository", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+        panel.add(findForks);
+
+        findApplicableTests = new JButton("Find applicable tests");
+        findApplicableTests.setAlignmentX(Component.CENTER_ALIGNMENT);
+        findApplicableTests.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // Check if forks are found and available
+                // Start finding applicable test
+                System.out.println("----- STARTING TO FIND APPLICABLE TESTS -----");
+            }
+        });
+        panel.add(findApplicableTests);
+
+        adaptApplicableTests = new JButton("Adapt applicable tests");
+        adaptApplicableTests.setAlignmentX(Component.CENTER_ALIGNMENT);
+        adaptApplicableTests.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // Check if applicable tests are found and available
+                // Start adapting tests to local project
+                System.out.println("----- STARTING TO ADAPT APPLICABLE TESTS TO LOCAL PROJECT -----");
+            }
+        });
+        panel.add(adaptApplicableTests);
+
+        startPropagation = new JButton("Start Propagation");
+        startPropagation.setAlignmentX(Component.CENTER_ALIGNMENT);
+        startPropagation.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // Check if tests are adapted and results are available
+                // Start displaying adapted tests to accept, modify, reject
+                System.out.println("----- STARTING TO SHOW ADAPTED TESTS -----");
+            }
+        });
+        panel.add(startPropagation);
 
         toolWindow.getComponent().add(panel);
     }
