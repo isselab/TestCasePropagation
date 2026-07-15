@@ -35,6 +35,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import se.isselab.testcasepropagation.Pipeline;
 import se.isselab.testcasepropagation.codeCollection.GitHub;
+import se.isselab.testcasepropagation.helper.ApplicableTestFinder;
 import se.isselab.testcasepropagation.helper.GitHubNameFinder;
 
 import javax.swing.*;
@@ -267,7 +268,11 @@ public class SettingsViewFactory implements ToolWindowFactory {
         });
     }
 
-    private void findApplicableTestsAction() {}
+    private void findApplicableTestsAction() {
+        List<String> savedForks = ProjectSettings.getInstance(currentProject).getSelectedForks(); //TODO: Change to 'selected' forks later
+        ApplicableTestFinder testFinder = new ApplicableTestFinder(); //TODO: Implement ApplicableTestFinder
+        testFinder.getApplicableTests(savedForks);
+    }
 
     private void adaptApplicableTestsAction() {}
 
