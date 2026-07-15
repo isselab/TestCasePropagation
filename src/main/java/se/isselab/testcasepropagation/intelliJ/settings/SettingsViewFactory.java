@@ -42,6 +42,7 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.IOException;
+import java.util.List;
 
 public class SettingsViewFactory implements ToolWindowFactory {
     private JLabel forkLabel;
@@ -152,7 +153,8 @@ public class SettingsViewFactory implements ToolWindowFactory {
                 String repositoryUrl = repositoryUrlField.getText();
                 if (repositoryUrl != null && repositoryUrl.contains("/") && repositoryUrl.indexOf("/") == repositoryUrl.lastIndexOf("/")) {
                     // If the format is correct, call the fetch action
-                    fetchButtonAction(repositoryUrl);
+                    System.out.println("----- STARTING TO FIND FORKS -----");
+                    findForksAction(repositoryUrl);
                 } else {
                     // Show dialog if the format is incorrect
                     JOptionPane.showMessageDialog(panel, "Repository in wrong format", "Invalid Repository", JOptionPane.ERROR_MESSAGE);
@@ -244,5 +246,31 @@ public class SettingsViewFactory implements ToolWindowFactory {
             }
         });
     }
+
+    private void findForksAction(String repository) {
+        ProgressManager.getInstance().run(new Task.Backgroundable(currentProject, "----- STARTING TO FIND FORKS -----") {
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                TestCasePropagationSettings settings = TestCasePropagationSettings.getInstance();
+                GitHub gh = new GitHub(settings.getGithubApiKey());
+
+                List<String> availableForks = null;
+                try {
+                    availableForks = gh.fetchForkSelection(repository);
+                } catch (IOException | InterruptedException e) {
+                    throw new RuntimeException(e); //TODO: Better to show user that it failed in UI
+                }
+
+                System.out.println("LIST OF AVAILABLE FORKS: ");
+                availableForks.forEach(System.out::println);
+            }
+        });
+    }
+
+    private void findApplicableTestsAction() {}
+
+    private void adaptApplicableTestsAction() {}
+
+    private void startPropagationAction() {}
 }
 
